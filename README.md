@@ -1,94 +1,182 @@
 # Tesla Lyrics — Synchronized Spotify Lyrics for the Tesla Center Display
 
-> **Status:** Technical design / architecture deliverable. This repository contains **no implementation code** — it is a production-grade design document intended to be read before a single line is written.
+A web app that shows **time-synced Spotify lyrics** on the Tesla center touchscreen (or any browser) while your music plays. It runs **inside the Tesla web browser** — no native app — and is built to feel like a built-in feature: large text, night-friendly dark theme, landscape-first, auto-scrolling, and **zero keyboard after login**.
 
-A web application that lets Tesla owners view **time-synchronized Spotify lyrics** on the Tesla center touchscreen while music plays. It runs **inside the Tesla web browser** (not a native app) and is designed to feel as close to a built-in Tesla feature as possible: large text, night-friendly, landscape-first, auto-scrolling, and zero keyboard after login.
-
----
-
-## ⚠️ Read this first: the two findings that define the project
-
-This design exists in a constrained reality. Two research findings dominate every decision in this document, and you should internalize them before reading further:
-
-1. **You almost certainly cannot play Spotify audio from inside this web app.** The Spotify Web Playback SDK requires EME/Widevine DRM, which is not confirmed to be exposed to arbitrary third-party sites in the Tesla browser, and the SDK has a documented history of failing on embedded/mobile Chromium with `EMEError: No supported keysystem was found`. The realistic architecture is **"companion display"**: audio plays from the **native Tesla Spotify app**, and our web app runs alongside it as a **read-only lyrics overlay** driven by the Spotify Web API's playback-state endpoints. See [`docs/02-technical-feasibility.md`](docs/02-technical-feasibility.md).
-
-2. **Spotify's own Developer Policy says "do not synchronize Spotify content," and a new app is capped at 5 users.** Synchronizing scrolling lyrics to Spotify playback sits in direct tension with Developer Policy §III.6, and as of the **February 6, 2026** platform changes, new apps in development mode are limited to **5 allow-listed users** with the developer required to hold Premium. Extended quota (unlimited users) is realistically **unavailable** to individuals. This is fundamentally a **personal / hobby / open-source** project, not a commercial one. See [`docs/15-risks.md`](docs/15-risks.md).
-
-Neither finding kills the project. Both reshape it. The honest framing throughout this document is: *a personal-use companion lyrics display, not a built-in-feature clone you can ship to the world.*
+> This repo contains both the **working application** (at the repo root) and the original **design research** in [`docs/`](docs/) (19 sections). The implementation follows that research; where it deviates for deployability, it's noted under [Architecture notes](#architecture-notes).
 
 ---
 
-## What this is
+## The one thing to understand first
 
-| | |
-|---|---|
-| **Experience** | Open a URL in the Tesla browser → log in with Spotify once → lyrics for whatever you're playing appear and scroll in sync, updating automatically on song change. |
-| **Plays the audio?** | **No.** Audio comes from the native Tesla Spotify app. We read "what's playing" via the Spotify Web API and overlay lyrics. |
-| **Lyrics source** | **LRCLIB** for the personal/open-source build (free, no key, LRC synced lyrics); **Musixmatch or LyricFind** if ever licensed for commercial use. |
-| **Runs where** | The Tesla in-car Chromium browser (and any landscape touchscreen / desktop browser for development). |
-| **Backend** | A thin server for the OAuth token exchange/refresh and a lyrics-fetch proxy (CORS + caching). The UI is otherwise a static SPA. |
+**This app does _not_ play audio.** The Spotify Web Playback SDK requires Widevine/EME DRM that the Tesla browser does not reliably expose, so playing audio in-browser on a Tesla is not feasible (see [`docs/02-technical-feasibility.md`](docs/02-technical-feasibility.md)). Instead this is a **companion display**:
 
-## What this is *not*
+- **Audio plays in the native Tesla Spotify app**, exactly as it does today.
+- **This app reads "what's currently playing"** via the Spotify Web API (`/me/player`) and renders the lyrics in time.
 
-- Not a native Tesla app (Tesla has no third-party in-car app platform).
-- Not a Spotify audio player (DRM + Tesla browser limits + ToS).
-- Not a commercial product (Spotify 5-user cap; lyrics licensing).
-- Not an implementation. There is no React, no scaffolding, no code here by design.
+That's the closest feasible thing to the original request, and it works well.
 
 ---
 
-## How to read this document
+## Features
 
-The full design is split into 18 sections under [`docs/`](docs/). Read them in order for a narrative, or jump to what you need.
-
-| # | Section | What it answers |
-|---|---|---|
-| 01 | [Product Overview](docs/01-product-overview.md) | What it does and how it feels from the driver's seat. |
-| 02 | [Technical Feasibility](docs/02-technical-feasibility.md) | Per-feature ✅ / ⚠️ / ❌ with reasons. **Start here for reality.** |
-| 03 | [High-Level Architecture](docs/03-high-level-architecture.md) | Every component and why each technology was chosen. |
-| 04 | [System Diagram](docs/04-system-diagram.md) | ASCII/mermaid diagrams of components and interactions. |
-| 05 | [Authentication Flow](docs/05-authentication-flow.md) | Spotify OAuth + PKCE, tokens, sessions, security. |
-| 06 | [Spotify Integration](docs/06-spotify-integration.md) | Endpoints, polling, song-change/pause detection, recovery. |
-| 07 | [Lyrics Strategy](docs/07-lyrics-strategy.md) | LRCLIB vs Musixmatch vs Genius vs LyricFind vs Apple. |
-| 08 | [Tesla Browser UX](docs/08-tesla-browser-ux.md) | Screen sizes, night mode, touch targets, smooth scroll. |
-| 09 | [Performance](docs/09-performance.md) | Latency, polling, bandwidth, caching, smooth rendering. |
-| 10 | [Edge Cases](docs/10-edge-cases.md) | No lyrics, ads, pause, offline, token expiry, reloads… |
-| 11 | [Security](docs/11-security.md) | OAuth, HTTPS, token storage, CSRF/XSS, secrets. |
-| 12 | [Scalability](docs/12-scalability.md) | 100 → 100k users and the infra at each step. |
-| 13 | [Development Roadmap](docs/13-development-roadmap.md) | Phases 1–6 with deliverables. |
-| 14 | [Tech Stack Recommendation](docs/14-tech-stack.md) | The recommended stack, justified line by line. |
-| 15 | [Risks](docs/15-risks.md) | Technical, legal, API-dependency, maintenance. |
-| 16 | [Future Features](docs/16-future-features.md) | Karaoke, translation, gestures, AI, and feasibility of each. |
-| 17 | [MVP](docs/17-mvp.md) | The smallest version buildable in one weekend. |
-| 18 | [Production Version](docs/18-production-version.md) | The ideal polished build with no time constraints. |
-
-A consolidated source list lives in [`docs/19-references.md`](docs/19-references.md).
+- 🎵 **Synced lyrics** from [LRCLIB](https://lrclib.net) (free, no API key) behind a **swappable provider interface** — drop in Musixmatch/LyricFind later without touching the UI.
+- ⏱️ **Tight sync** via poll + client-side interpolation: the server polls Spotify, latency-corrects using Spotify's own `timestamp`, and a `requestAnimationFrame` clock advances the highlight smoothly between polls.
+- 🌙 **Tesla-first UI**: near-black night theme, huge fluid type (`clamp()` scales 1920×1200 → 2560×1600 → Cybertruck), GPU-composited scroll, auto-hiding chrome, ≥64px touch targets, fullscreen-friendly.
+- 🔒 **Secure auth**: Authorization Code **+ PKCE**, token exchange/refresh done server-side, tokens sealed in an **encrypted httpOnly cookie** — never readable by browser JS.
+- 🧊 **Calm edge cases**: no-lyrics, instrumental, plain (unsynced) lyrics, paused, nothing playing, ad, podcast, token refresh, rate-limits, and network outages all degrade gracefully — never a blank screen or a stack trace.
+- 🖥️ Works just as well in a **normal desktop/mobile browser**.
 
 ---
 
-## TL;DR architecture
+## Tech stack
 
-```
-Native Tesla Spotify app  ──plays audio──▶  Car speakers
-            │
-            │ (Spotify Web API reports what's playing)
-            ▼
-Tesla browser (our SPA)  ──poll /me/player──▶  Our backend  ──▶  Spotify Web API
-            │                                       │
-            │ ◀──synced lyrics (LRC)────────────────┴──▶  LRCLIB (cached)
-            ▼
-   Lyrics auto-scroll & highlight in sync with progress_ms
+Next.js 14 (App Router) · React 18 · TypeScript · Tailwind CSS · `jose` (cookie encryption) · `zod` (API validation). Deploys to **Vercel** with zero external services. See [`docs/14-tech-stack.md`](docs/14-tech-stack.md).
+
+---
+
+## Quick start (local)
+
+### 1. Create a Spotify app
+
+1. Go to the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard) and **Create app**.
+2. Note the **Client ID** and **Client Secret**.
+3. Under **Edit settings → Redirect URIs**, add **exactly**:
+   ```
+   http://127.0.0.1:3000/api/auth/callback
+   ```
+   > Spotify removed the `localhost` alias on 2025-11-27 — you **must** use `127.0.0.1` for local dev. Production must be **HTTPS** (see below).
+4. Select the **Web API** when asked which APIs you'll use. Save.
+
+### 2. Configure environment
+
+```bash
+cp .env.example .env.local
 ```
 
-We never touch the audio. We read `progress_ms` + `timestamp` from Spotify, fetch the matching LRC lyrics, and animate the highlight locally using a clock interpolated from the last poll.
+Fill in `.env.local`:
+
+| Variable | What |
+|----------|------|
+| `SPOTIFY_CLIENT_ID` | From the dashboard. |
+| `SPOTIFY_CLIENT_SECRET` | From the dashboard. **Server-side only.** |
+| `SPOTIFY_REDIRECT_URI` | `http://127.0.0.1:3000/api/auth/callback` for local. |
+| `SESSION_SECRET` | 32+ char random string. Generate: `openssl rand -base64 32` |
+| `LRCLIB_USER_AGENT` | Optional; identifies you to LRCLIB. |
+
+### 3. Run
+
+```bash
+npm install
+npm run dev
+```
+
+Open **http://127.0.0.1:3000** (use `127.0.0.1`, not `localhost`, so the redirect URI matches). Log in with Spotify, then **start a song in any Spotify app** (phone, desktop, or your Tesla) — the lyrics appear and scroll in sync.
+
+```bash
+npm run build   # production build (verifies types + compiles)
+npm start       # run the production build locally
+```
 
 ---
 
-## Conventions used in this document
+## ⚠️ Spotify development-mode 5-user cap
 
-- **✅ Supported** — works today with documented, sanctioned APIs.
-- **⚠️ Possible with workaround** — achievable, but via a fragile path, an unofficial route, or with caveats.
-- **❌ Not possible** — blocked by platform, DRM, policy, or physics.
-- **[CONFIRMED] / [UNCERTAIN]** — tags on research claims, indicating whether a fact is backed by primary docs or needs on-device verification.
+As of **2026-02-06**, a new Spotify app in *development mode* can only be used by up to **5 explicitly allow-listed users**, and the developer must have **Spotify Premium**.
 
-All factual claims about Tesla, Spotify, and lyrics providers were researched as of **June 2026**. Anything tagged `[UNCERTAIN]` — most importantly whether EME/Widevine and persistent storage work in the Tesla browser — **must be verified on real hardware** before committing engineering effort.
+**You must add each user (including yourself) by their Spotify account email:**
+
+> Spotify Developer Dashboard → your app → **User Management** → add the person's **Spotify account email** → Save.
+
+If a non-allow-listed account tries to log in, Spotify returns **403** and the app shows a clear "Access not enabled — limited to 5 approved users" message rather than failing silently. Extended quota (unlimited users) is effectively unavailable to individuals, which is why this is a **personal / hobby** project. See [`docs/15-risks.md`](docs/15-risks.md).
+
+---
+
+## Deploy to a domain (Vercel)
+
+1. Push this repo to GitHub.
+2. In [Vercel](https://vercel.com), **Import** the repo (it auto-detects Next.js — no config needed).
+3. Add the **Environment Variables** from your `.env.local` in **Project Settings → Environment Variables**, but set:
+   ```
+   SPOTIFY_REDIRECT_URI = https://your-domain.com/api/auth/callback
+   ```
+4. In the **Spotify dashboard**, add that **same HTTPS redirect URI** to the app's allow-list (exact match, including the path).
+5. Deploy. Vercel gives you automatic HTTPS, which Spotify now **requires** for redirect URIs.
+
+Using a custom domain? Add it in Vercel, then update both `SPOTIFY_REDIRECT_URI` and the Spotify dashboard to the custom domain. The redirect URI must match **exactly**.
+
+---
+
+## Using it in the Tesla
+
+1. Make sure your Tesla's Spotify account email is **added to the app's 5-user allow-list** (above).
+2. In the car (parked), open the Tesla browser and navigate to your deployed domain.
+3. Log in with Spotify once (the only keyboard moment — Spotify usually remembers consent afterward).
+4. Start playback in the **native Tesla Spotify app**. Switch back to the browser tab — lyrics track whatever's playing.
+5. Tap anywhere to reveal the top bar (dim, fullscreen, log out); it auto-hides again.
+
+Notes for the car (from the research in [`docs/08`](docs/08-tesla-browser-ux.md) / [`docs/10`](docs/10-edge-cases.md)):
+- **Audio is the native Spotify app's job** — this is a display only.
+- The browser is disabled while **driving**; on return to Park the app re-polls and resumes automatically.
+- If the Tesla browser wipes its storage on reboot, you just tap "Log in" again (one tap; consent is remembered).
+- Fullscreen is gesture-gated and may no-op on the Tesla browser — the layout is edge-to-edge regardless, so it still looks immersive.
+
+---
+
+## How it works
+
+```
+Browser (Tesla / desktop)                 Next.js server (Vercel)              Spotify / LRCLIB
+─────────────────────────                 ───────────────────────              ────────────────
+LoginScreen ── tap ──────────► GET /api/auth/login ── 302 ──► accounts.spotify.com/authorize
+                               (PKCE verifier+state in httpOnly cookies)
+                          ◄─── GET /api/auth/callback ◄── redirect w/ code
+                               exchange code+secret+verifier ─► /api/token
+                               seal {access,refresh,exp} into encrypted cookie
+Player (poll loop) ──────────► GET /api/playback ──────────► GET /me/player
+   anchor + rAF clock     ◄─── normalized PlaybackState      (refresh token if near expiry)
+   on track change ──────────► GET /api/lyrics ────────────► lrclib.net (cached)
+   LyricsView: binary-search active line, glide via transform
+```
+
+- **Sync model** (`lib/spotify.ts`, `hooks/usePlayback.ts`, `components/LyricsView.tsx`): the server latency-corrects `progress_ms` using Spotify's `timestamp`; the client re-anchors on each poll and interpolates with `requestAnimationFrame`. Adaptive poll intervals (5s steady → 2s near track end → 1s burst on change → 10–20s when paused/idle). See [`docs/06`](docs/06-spotify-integration.md).
+- **Lyrics** (`lib/lyrics/`): `LyricsProvider` interface with an LRCLIB implementation; exact `/get` match by track+artist+album+duration, falling back to `/search` ranked by duration + synced availability; LRC parsed server-side into `{tMs, text}`; in-memory cache with negative caching. See [`docs/07`](docs/07-lyrics-strategy.md).
+- **Auth** (`lib/session.ts`, `lib/spotify.ts`, `app/api/auth/*`): PKCE + server-side exchange/refresh; proactive refresh at T-60s and reactive refresh on 401. See [`docs/05`](docs/05-authentication-flow.md).
+
+### Project structure
+
+```
+app/
+  page.tsx                 # server component: session? → Player : LoginScreen
+  layout.tsx, globals.css
+  api/
+    auth/{login,callback,logout}/route.ts
+    playback/route.ts      # BFF proxy to /me/player (token stays server-side)
+    lyrics/route.ts        # validated, cached lyrics fetch
+components/                # LoginScreen, Player, TopBar, LyricsView, PlainLyrics, StatusCard, SpotifyMark
+hooks/                     # usePlayback (poll+adaptive interval), useLyrics (fetch on track change)
+lib/                       # env, session (jose), pkce, spotify, types, lyrics/*
+docs/                      # the original 19-section design research (unchanged)
+```
+
+---
+
+## Architecture notes
+
+A few deliberate, documented choices that make this deployable to a domain with **zero external services**, while honoring the research:
+
+- **Session storage.** The docs ([`docs/05`](docs/05-authentication-flow.md) §5.5) call for the refresh token to live server-side, encrypted, unreadable by browser JS. Rather than require a Postgres/Redis instance, we seal the tokens into an **encrypted (AES-256-GCM/JWE) httpOnly cookie** keyed by `SESSION_SECRET`. The browser carries an opaque blob it can't read or forge; only the server decrypts it. This satisfies the security goal and deploys with nothing but a Spotify app. To move the refresh token fully off the client (true server storage), replace `lib/session.ts` with a DB-backed store — the rest of the app is unchanged.
+- **BFF (Variant B).** The browser never holds a Spotify token; it polls `/api/playback` and the server uses the server-held token. This is the stricter of the two variants in the docs and is the better fit for the Tesla browser's flaky storage.
+- **Lyrics cache** is in-memory (per serverless instance). For a cache shared across instances, back `lib/lyrics/cache.ts` with Upstash Redis — same `get`/`set` shape.
+- **Next.js version.** Pinned to the latest patched **14.2.x**. `npm audit` reports framework advisories whose only upstream fix is the major upgrade to Next 16 (which also makes `cookies()` async, reworking the session layer); the practical optimizer-related ones are mitigated by disabling the Next image optimizer (we render album art with plain `<img>` from Spotify's CDN). Bumping to Next 16 is a clean follow-up when you're ready for the major.
+
+---
+
+## Legal / scope
+
+Personal, non-commercial use. LRCLIB lyrics are **crowdsourced and unlicensed** — fine for a personal tool, not a commercial base. Synchronizing lyrics to Spotify playback is in tension with Spotify Developer Policy §III.6; the personal, ≤5-user posture is the mitigation. Album art + metadata are shown and the track links back to Spotify per the attribution policy. The moment money or public distribution enters, you need a licensed provider (Musixmatch/LyricFind) and a different posture. See [`docs/07`](docs/07-lyrics-strategy.md) and [`docs/15-risks.md`](docs/15-risks.md).
+
+---
+
+## License
+
+Personal/educational use. Respect Spotify's and LRCLIB's terms.

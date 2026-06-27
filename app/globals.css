@@ -1,0 +1,65 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  background-color: #08090c;
+  color: #f5f6f8;
+  /* Prevent rubber-band / overscroll on the touch screen. */
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  /* Lock to the viewport: this is a single-screen "feature", not a webpage. */
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  -webkit-user-select: none;
+  user-select: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Hide the cursor when idle for a clean immersive feel (docs/08 §8.7). */
+.cursor-idle,
+.cursor-idle * {
+  cursor: none;
+}
+
+/* The lyric glide: a single GPU-composited transform, no per-line reflow
+   (docs/08 §8.9, docs/14). */
+.lyric-stage {
+  will-change: transform;
+  transform: translateZ(0);
+}
+
+/* Respect reduced motion: drop the glide for a plain cross-fade (docs/08 §8.10). */
+@media (prefers-reduced-motion: reduce) {
+  .lyric-line {
+    transition: opacity 200ms linear !important;
+  }
+}
+
+/* Subtle pulsing dots for instrumental gaps. */
+@keyframes dotpulse {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.gap-dot {
+  animation: dotpulse 1.4s ease-in-out infinite;
+}
