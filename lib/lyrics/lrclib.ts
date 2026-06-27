@@ -29,11 +29,38 @@ export class LrclibProvider implements LyricsProvider {
     const key = trackKey(query);
     const durationMs = query.durationMs;
 
-    const record =
-      (await this.exactGet(query)) ?? (await this.searchBest(query));
+    // `exactGet`/`searchBest` return `null` ONLY for a genuine miss (404 /
+    // empty results) and throw on transient failures (network, 5xx, 429,
+    // timeout). We fire BOTH concurrently so the total wait is the slower call,
+    // not their sum — LRCLIB can be seconds-slow and the old sequential path
+    // stacked those delays. We prefer the exact match; if it hits we return
+    // immediately and the search result is discarded. If neither produces a
+    // record and either threw, we rethrow (route → 502, not negative-cached);
+    // if both genuinely missed, it's a real "no lyrics".
+    const exactP = this.exactGet(query);
+    const searchP = this.searchBest(query);
+    // Avoid an unhandled rejection if we never await searchP (exact hit path).
+    searchP.catch(() => {});
+
+    let record: LrclibRecord | null = null;
+    let transient: unknown = null;
+
+    try {
+      record = await exactP;
+    } catch (e) {
+      transient = e;
+    }
+    if (!record) {
+      try {
+        record = await searchP;
+      } catch (e) {
+        transient = e;
+      }
+    }
 
     if (!record) {
-      return notFound(key, durationMs);
+      if (transient) throw transient; // don't cache; let the poll retry
+      return notFound(key, durationMs); // genuine miss; safe to cache
     }
 
     if (record.instrumental) {
@@ -87,6 +114,57 @@ export class LrclibProvider implements LyricsProvider {
     };
   }
 
+  /**
+   * Fetch with a hard per-request timeout. A 404 is returned to the caller as a
+   * real response (genuine miss); everything else (5xx, 429, network error,
+   * timeout) is thrown so the caller can decide NOT to negative-cache it. We
+   * retry once on a non-timeout error, but never on a timeout — a request that
+   * already blew the deadline will almost certainly time out again, and the
+   * point here is to fail fast.
+   *
+   * The timeout is the important bit: LRCLIB's `/search` occasionally hangs,
+   * and without an abort the whole lyrics fetch would stall (the user saw
+   * "Finding lyrics…" stuck 45s into a song). Bounding each request keeps the
+   * worst case to a few seconds, then we fall back to "no lyrics".
+   */
+  private async fetchJson(url: string, timeoutMs: number): Promise<Response> {
+    const RETRIES = 1;
+    let lastErr: unknown = new Error("lrclib: request failed");
+    for (let attempt = 0; attempt <= RETRIES; attempt++) {
+      const controller = new AbortController();
+      let timedOut = false;
+      const timer = setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, timeoutMs);
+      try {
+        const res = await fetch(url, {
+          headers: this.headers(),
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        if (res.ok || res.status === 404) return res;
+        lastErr = new Error(`lrclib: HTTP ${res.status}`);
+      } catch (e) {
+        lastErr = e;
+        if (timedOut) break; // don't retry a timeout — fail fast
+      } finally {
+        clearTimeout(timer);
+      }
+      if (attempt < RETRIES) {
+        await new Promise((r) => setTimeout(r, 150));
+      }
+    }
+    throw lastErr;
+  }
+
+  // `/get` is an indexed exact lookup — normally sub-second; bound it tight.
+  // `/search` scans and is much slower (seconds), so it gets a longer budget;
+  // the timeout still has to be long enough to receive a genuine "0 results"
+  // answer, otherwise an empty (but slow) result would masquerade as a hang.
+  private static readonly GET_TIMEOUT_MS = 5000;
+  private static readonly SEARCH_TIMEOUT_MS = 9000;
+
   private async exactGet(query: TrackQuery): Promise<LrclibRecord | null> {
     const params = new URLSearchParams({
       track_name: query.title,
@@ -95,17 +173,12 @@ export class LrclibProvider implements LyricsProvider {
     });
     if (query.album) params.set("album_name", query.album);
 
-    try {
-      const res = await fetch(`${BASE}/get?${params.toString()}`, {
-        headers: this.headers(),
-        cache: "no-store",
-      });
-      if (res.status === 404) return null;
-      if (!res.ok) return null;
-      return (await res.json()) as LrclibRecord;
-    } catch {
-      return null;
-    }
+    const res = await this.fetchJson(
+      `${BASE}/get?${params.toString()}`,
+      LrclibProvider.GET_TIMEOUT_MS,
+    );
+    if (res.status === 404) return null; // genuine miss
+    return (await res.json()) as LrclibRecord;
   }
 
   private async searchBest(query: TrackQuery): Promise<LrclibRecord | null> {
@@ -114,12 +187,12 @@ export class LrclibProvider implements LyricsProvider {
       artist_name: normalizeArtist(query.artist),
     });
 
-    try {
-      const res = await fetch(`${BASE}/search?${params.toString()}`, {
-        headers: this.headers(),
-        cache: "no-store",
-      });
-      if (!res.ok) return null;
+    {
+      const res = await this.fetchJson(
+        `${BASE}/search?${params.toString()}`,
+        LrclibProvider.SEARCH_TIMEOUT_MS,
+      );
+      if (res.status === 404) return null;
       const results = (await res.json()) as LrclibRecord[];
       if (!Array.isArray(results) || results.length === 0) return null;
 
@@ -141,8 +214,6 @@ export class LrclibProvider implements LyricsProvider {
       // Guard against wildly wrong duration matches (> 15s off and not synced).
       if (best.durDelta > 15 && !best.hasSynced) return null;
       return best.r;
-    } catch {
-      return null;
     }
   }
 }

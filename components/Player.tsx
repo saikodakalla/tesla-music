@@ -8,13 +8,20 @@ import LyricsView from "./LyricsView";
 import PlainLyrics from "./PlainLyrics";
 import StatusCard from "./StatusCard";
 import TopBar from "./TopBar";
+import type { LyricsDoc, PlaybackState } from "@/lib/types";
 
 const UI_IDLE_MS = 4500; // hide chrome + cursor after this much inactivity
 
-export default function Player() {
+export default function Player({
+  initialPlayback = null,
+  initialLyrics = null,
+}: {
+  initialPlayback?: PlaybackState | null;
+  initialLyrics?: LyricsDoc | null;
+}) {
   const router = useRouter();
-  const { playback, anchor, status, outageMs } = usePlayback();
-  const { lyrics, loading } = useLyrics(playback);
+  const { playback, anchor, status, outageMs } = usePlayback(initialPlayback);
+  const { lyrics, loading } = useLyrics(playback, initialLyrics);
 
   const [uiVisible, setUiVisible] = useState(true);
   const [dimmed, setDimmed] = useState(false);
@@ -173,7 +180,13 @@ function CenterContent({
   }
 
   if (lyrics?.synced && lyrics.lines.length > 0) {
-    return <LyricsView lines={lyrics.lines} anchor={anchor} />;
+    return (
+      <LyricsView
+        key={playback.trackId ?? lyrics.trackKey}
+        lines={lyrics.lines}
+        anchor={anchor}
+      />
+    );
   }
 
   if (lyrics && !lyrics.synced && lyrics.plain) {

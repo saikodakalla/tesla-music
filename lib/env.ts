@@ -42,6 +42,24 @@ export const env = {
   },
 };
 
+/**
+ * True only when the Spotify credentials look like real values. Catches the
+ * common first-run mistake of leaving the `.env.example` placeholders in place,
+ * which otherwise sends `test_client_id_placeholder` to Spotify and bounces the
+ * user to Spotify's opaque "client_id: Invalid" page after they tap Log in.
+ */
+export function spotifyCredentialsConfigured(): boolean {
+  const id = process.env.SPOTIFY_CLIENT_ID?.trim() ?? "";
+  const secret = process.env.SPOTIFY_CLIENT_SECRET?.trim() ?? "";
+  if (!id || !secret) return false;
+  // Real Spotify client IDs are 32-char lowercase hex; reject obvious placeholders.
+  if (/placeholder|changeme|your[_-]?client|test[_-]?client|xxxx/i.test(id)) {
+    return false;
+  }
+  if (!/^[0-9a-f]{32}$/i.test(id)) return false;
+  return true;
+}
+
 /** Spotify OAuth scopes we request — the minimum needed (docs/05 §5.2). */
 export const SPOTIFY_SCOPES = [
   "user-read-currently-playing",

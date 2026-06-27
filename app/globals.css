@@ -48,6 +48,15 @@ body {
   }
 }
 
+/* Hide the scrollbar on the lyrics scroller while keeping it scrollable. */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 /* Subtle pulsing dots for instrumental gaps. */
 @keyframes dotpulse {
   0%,

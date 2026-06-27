@@ -230,12 +230,21 @@ export async function fetchPlayback(accessToken: string): Promise<PlaybackState>
   const type = normalizeType(data.currently_playing_type);
   const item = data.item;
 
-  // Latency correction (only meaningful while playing).
+  // Progress.
+  //
+  // We deliberately do NOT apply Spotify's `timestamp` to "latency-correct"
+  // progress_ms. Although documented as "when data was fetched", in practice
+  // `timestamp` is frequently STALE (it reflects when the play context last
+  // changed, not when progress_ms was sampled) and it's the Spotify *server*
+  // clock, which can be skewed from ours. Adding `Date.now() - timestamp`
+  // therefore pushed progress seconds ahead of reality, so lyrics highlighted
+  // early. Instead we pass progress_ms through as-is and let the CLIENT advance
+  // it from its own receive time (usePlayback's anchor + LyricsView's rAF
+  // clock), which is precise and never runs ahead. A small constant lead in
+  // LyricsView (LYRIC_LEAD_MS) compensates for the sub-second fetch latency.
   const baseProgress = data.progress_ms ?? 0;
-  const elapsedSinceCapture =
-    data.is_playing && data.timestamp ? Math.max(0, Date.now() - data.timestamp) : 0;
   const durationMs = item?.duration_ms ?? 0;
-  const progressMs = Math.min(baseProgress + elapsedSinceCapture, durationMs || Infinity);
+  const progressMs = Math.min(baseProgress, durationMs || Infinity);
 
   if (!item) {
     // is_playing true but item null — rare transient (edge case #31). Treat as

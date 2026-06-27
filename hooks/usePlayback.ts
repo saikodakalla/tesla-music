@@ -44,15 +44,31 @@ const NEAR_END_MS = 10_000;
 const BURST_COUNT = 3;
 const BACKOFF_CAP = 30_000;
 
-export function usePlayback(): UsePlaybackResult {
-  const [playback, setPlayback] = useState<PlaybackState | null>(null);
-  const [anchor, setAnchor] = useState<PlaybackAnchor | null>(null);
-  const [status, setStatus] = useState<PlaybackStatus>("loading");
+export function usePlayback(
+  initialPlayback?: PlaybackState | null,
+): UsePlaybackResult {
+  const [playback, setPlayback] = useState<PlaybackState | null>(
+    initialPlayback ?? null,
+  );
+  const [anchor, setAnchor] = useState<PlaybackAnchor | null>(() =>
+    initialPlayback && initialPlayback.isActive
+      ? {
+          progressMs: initialPlayback.progressMs,
+          durationMs: initialPlayback.durationMs,
+          isPlaying: initialPlayback.isPlaying,
+          receivedAt: typeof performance !== "undefined" ? performance.now() : 0,
+          trackId: initialPlayback.trackId,
+        }
+      : null,
+  );
+  const [status, setStatus] = useState<PlaybackStatus>(
+    initialPlayback ? (initialPlayback.isActive ? "ok" : "idle") : "loading",
+  );
   const [outageMs, setOutageMs] = useState(0);
 
   // Refs to avoid stale closures inside the recursive timer.
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastTrackId = useRef<string | null>(null);
+  const lastTrackId = useRef<string | null>(initialPlayback?.trackId ?? null);
   const burstLeft = useRef(0);
   const failures = useRef(0);
   const outageStart = useRef<number | null>(null);

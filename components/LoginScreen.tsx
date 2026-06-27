@@ -6,6 +6,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   exchange_failed:
     "Couldn't connect to Spotify. Please try again in a moment.",
   access_denied: "Login was cancelled.",
+  not_configured:
+    "Spotify isn't configured yet. Add your real SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET to .env.local (see the README), then restart the dev server.",
 };
 
 /**
