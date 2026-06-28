@@ -44,5 +44,11 @@ export async function GET(req: NextRequest) {
   authorizeUrl.searchParams.set("code_challenge_method", "S256");
   authorizeUrl.searchParams.set("code_challenge", challenge);
 
-  return NextResponse.redirect(authorizeUrl.toString());
+  // Never let the browser/CDN cache this redirect. Each login mints a fresh
+  // state + PKCE challenge, and a cached 307 would replay a stale authorize URL
+  // (e.g. an old redirect_uri after a config change) — the classic cause of a
+  // lingering "redirect_uri: Not matching configuration" after the fix shipped.
+  const res = NextResponse.redirect(authorizeUrl.toString());
+  res.headers.set("Cache-Control", "no-store, max-age=0");
+  return res;
 }
