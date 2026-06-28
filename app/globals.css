@@ -4,6 +4,10 @@
 
 :root {
   color-scheme: dark;
+  /* Album-art-derived accent; set live by the Player, neutral by default. */
+  --accent: #f5f6f8;
+  /* Lyric font-size multiplier, driven by the A−/A+ control. */
+  --lyric-scale: 1;
 }
 
 html,
@@ -55,6 +59,53 @@ body {
 }
 .no-scrollbar::-webkit-scrollbar {
   display: none;
+}
+
+/* Ambient backdrop cross-fade: the newest album-art layer fades in over the
+   previous one. Only opacity animates (GPU-cheap, docs/09). */
+@keyframes ambientfade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 0.9;
+  }
+}
+.ambient-fade {
+  animation: ambientfade 600ms ease forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ambient-fade {
+    animation-duration: 1ms;
+  }
+}
+
+/* Gradient-mesh blobs: slow, looping drift via transform only (GPU-composited,
+   docs/09). Each blob gets a different path/timing so the field feels alive. */
+@keyframes mesh-drift-a {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(8vw, 6vh, 0) scale(1.15); }
+}
+@keyframes mesh-drift-b {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1.1); }
+  50% { transform: translate3d(-10vw, 8vh, 0) scale(0.95); }
+}
+@keyframes mesh-drift-c {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(9vw, -7vh, 0) scale(1.12); }
+}
+@keyframes mesh-drift-d {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1.05); }
+  50% { transform: translate3d(-7vw, -6vh, 0) scale(0.92); }
+}
+.mesh-drift-a { animation: mesh-drift-a 26s ease-in-out infinite; }
+.mesh-drift-b { animation: mesh-drift-b 32s ease-in-out infinite; }
+.mesh-drift-c { animation: mesh-drift-c 29s ease-in-out infinite; }
+.mesh-drift-d { animation: mesh-drift-d 35s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .mesh-drift-a, .mesh-drift-b, .mesh-drift-c, .mesh-drift-d {
+    animation: none;
+  }
 }
 
 /* Subtle pulsing dots for instrumental gaps. */

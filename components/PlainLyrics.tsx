@@ -14,7 +14,10 @@ export default function PlainLyrics({ text }: { text: string }) {
         {text.split(/\r?\n/).map((line, i) => (
           <p
             key={i}
-            className="py-1 text-[clamp(1.4rem,3vw,2.2rem)] leading-snug text-lyric-dim"
+            className="py-1 leading-snug text-lyric-dim"
+            style={{
+              fontSize: "calc(clamp(1.4rem, 3vw, 2.2rem) * var(--lyric-scale, 1))",
+            }}
           >
             {line || " "}
           </p>

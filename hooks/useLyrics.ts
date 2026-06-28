@@ -17,6 +17,7 @@ import type { LyricsDoc, PlaybackState } from "@/lib/types";
 export function useLyrics(
   playback: PlaybackState | null,
   initialLyrics?: LyricsDoc | null,
+  overrideId?: string | null,
 ): {
   lyrics: LyricsDoc | null;
   loading: boolean;
@@ -25,8 +26,10 @@ export function useLyrics(
   const [loading, setLoading] = useState(false);
   // Seed `currentKey` with the prefetched track so the first effect run is a
   // no-op (no redundant client refetch when the server already gave us lyrics).
+  // Seeded to match the fetchKey format (`${trackId}|${overrideId}`) so a
+  // server-prefetched track (no override) is a no-op on first run.
   const currentKey = useRef<string | null>(
-    initialLyrics && playback?.trackId ? playback.trackId : null,
+    initialLyrics && playback?.trackId ? `${playback.trackId}|` : null,
   );
 
   const isTrack =
@@ -57,22 +60,32 @@ export function useLyrics(
       return;
     }
 
-    const trackChanged = currentKey.current !== trackId;
-    currentKey.current = trackId;
+    // Key on both the track and the manual override so that picking a different
+    // record for the same song re-runs the fetch (and is treated like a change).
+    const fetchKey = `${trackId}|${overrideId ?? ""}`;
+    const trackChanged = currentKey.current !== fetchKey;
+    currentKey.current = fetchKey;
     let cancelled = false;
-    // On a real song change, drop the previous song's lyrics immediately so we
-    // never show the old words against the new track — the UI shows a brief
+    // On a real song change (or override switch), drop the previous lyrics
+    // immediately so we never show stale words — the UI shows a brief
     // "Finding lyrics…" until the new ones load.
     if (trackChanged) setLyrics(null);
     setLoading(true);
 
-    const params = new URLSearchParams({
-      title,
-      artist: artists,
-      durationMs: String(durationMs),
-    });
-    if (album) params.set("album", album);
-    if (isrc) params.set("isrc", isrc);
+    // A manual override fetches that exact record by id; otherwise the normal
+    // auto-match by metadata.
+    const url = overrideId
+      ? `/api/lyrics/by-id?id=${encodeURIComponent(overrideId)}`
+      : (() => {
+          const params = new URLSearchParams({
+            title,
+            artist: artists,
+            durationMs: String(durationMs),
+          });
+          if (album) params.set("album", album);
+          if (isrc) params.set("isrc", isrc);
+          return `/api/lyrics?${params.toString()}`;
+        })();
 
     // Retry transient failures (the lyrics endpoint returns 502 when LRCLIB is
     // briefly unreachable) instead of permanently showing "no lyrics" for a
@@ -109,7 +122,7 @@ export function useLyrics(
         setLoading(false);
       };
 
-      fetch(`/api/lyrics?${params.toString()}`, {
+      fetch(url, {
         cache: "no-store",
         signal: controller.signal,
       })
@@ -140,7 +153,7 @@ export function useLyrics(
     return () => {
       cancelled = true;
     };
-  }, [trackId, title, artists, album, durationMs, isrc]);
+  }, [trackId, title, artists, album, durationMs, isrc, overrideId]);
 
   return { lyrics, loading };
 }

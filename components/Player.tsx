@@ -4,6 +4,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { usePlayback } from "@/hooks/usePlayback";
 import { useLyrics } from "@/hooks/useLyrics";
+import { useArtTheme } from "@/hooks/useArtTheme";
+import { useLyricSettings } from "@/hooks/useLyricSettings";
+import { useLyricOverride } from "@/hooks/useLyricOverride";
+import { useThemeSettings } from "@/hooks/useThemeSettings";
+import AmbientBackdrop from "./AmbientBackdrop";
+import GradientMesh from "./GradientMesh";
+import IdleScreen from "./IdleScreen";
+import LyricsControls from "./LyricsControls";
+import SyncCalibrator from "./SyncCalibrator";
 import LyricsView from "./LyricsView";
 import PlainLyrics from "./PlainLyrics";
 import StatusCard from "./StatusCard";
@@ -21,12 +30,34 @@ export default function Player({
 }) {
   const router = useRouter();
   const { playback, anchor, status, outageMs } = usePlayback(initialPlayback);
-  const { lyrics, loading } = useLyrics(playback, initialLyrics);
+
+  // Lyric display prefs (font size + sync nudge) and per-track manual override.
+  const { fontScale, setFontScale, syncOffsetMs, setSyncOffsetMs } =
+    useLyricSettings();
+  const { overrideId, setOverride, clearOverride } = useLyricOverride(
+    playback?.trackId,
+  );
+  const { lyrics, loading } = useLyrics(playback, initialLyrics, overrideId);
+
+  // Album-art-derived accent + palette for the ambient theme, and the look
+  // preferences that decide how they're used.
+  const { accent, palette } = useArtTheme(playback?.albumArtUrl);
+  const theme = useThemeSettings();
 
   const [uiVisible, setUiVisible] = useState(true);
   const [dimmed, setDimmed] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [calibrating, setCalibrating] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Remember the last album art so the idle screen can echo "what was on".
+  const lastArtRef = useRef<string | null>(null);
+  if (playback?.albumArtUrl) lastArtRef.current = playback.albumArtUrl;
+
+  // Tap-to-beat calibration only makes sense against playing, synced lyrics.
+  const canCalibrate =
+    !!playback?.isPlaying && !!lyrics?.synced && lyrics.lines.length > 0;
 
   // Session ended server-side → re-render the home route to show the login.
   useEffect(() => {
@@ -73,7 +104,21 @@ export default function Player({
       className={`relative h-full w-full bg-ink-950 ${
         uiVisible ? "" : "cursor-idle"
       }`}
+      style={
+        {
+          "--accent": accent,
+          "--lyric-scale": fontScale,
+        } as React.CSSProperties
+      }
     >
+      {theme.backdrop === "mesh" ? (
+        <GradientMesh palette={palette} motion={theme.ambientMotion} />
+      ) : theme.backdrop === "blur" ? (
+        <AmbientBackdrop albumArtUrl={playback?.albumArtUrl} accent={accent} />
+      ) : (
+        <div className="absolute inset-0 bg-ink-950" />
+      )}
+
       <TopBar
         playback={playback}
         visible={uiVisible}
@@ -83,11 +128,15 @@ export default function Player({
           poke();
         }}
         onToggleFullscreen={toggleFullscreen}
+        onOpenSettings={() => {
+          setSettingsOpen(true);
+          poke();
+        }}
         reconnecting={reconnecting}
       />
 
       <div
-        className="h-full w-full transition-[filter] duration-500"
+        className="relative z-10 h-full w-full transition-[filter] duration-500"
         style={{ filter: dimmed ? "brightness(0.55)" : "none" }}
       >
         <CenterContent
@@ -96,8 +145,47 @@ export default function Player({
           anchor={anchor}
           lyrics={lyrics}
           loading={loading}
+          syncOffsetMs={syncOffsetMs}
+          accentLyrics={theme.accentLyrics}
+          lastArtUrl={lastArtRef.current}
         />
       </div>
+
+      <LyricsControls
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        playback={playback}
+        fontScale={fontScale}
+        setFontScale={setFontScale}
+        syncOffsetMs={syncOffsetMs}
+        setSyncOffsetMs={setSyncOffsetMs}
+        overrideId={overrideId}
+        setOverride={setOverride}
+        clearOverride={clearOverride}
+        backdrop={theme.backdrop}
+        setBackdrop={theme.setBackdrop}
+        accentLyrics={theme.accentLyrics}
+        setAccentLyrics={theme.setAccentLyrics}
+        ambientMotion={theme.ambientMotion}
+        setAmbientMotion={theme.setAmbientMotion}
+        canCalibrate={canCalibrate}
+        onStartCalibration={() => {
+          setSettingsOpen(false);
+          setCalibrating(true);
+        }}
+      />
+
+      {calibrating && lyrics?.lines && (
+        <SyncCalibrator
+          lines={lyrics.lines}
+          anchor={anchor}
+          onApply={(off) => {
+            setSyncOffsetMs(off);
+            setCalibrating(false);
+          }}
+          onCancel={() => setCalibrating(false)}
+        />
+      )}
 
       {/* Paused indicator — lyrics stay frozen behind it (docs/10 #7). */}
       {playback?.isActive &&
@@ -118,12 +206,18 @@ function CenterContent({
   anchor,
   lyrics,
   loading,
+  syncOffsetMs,
+  accentLyrics,
+  lastArtUrl,
 }: {
   status: ReturnType<typeof usePlayback>["status"];
   playback: ReturnType<typeof usePlayback>["playback"];
   anchor: ReturnType<typeof usePlayback>["anchor"];
   lyrics: ReturnType<typeof useLyrics>["lyrics"];
   loading: boolean;
+  syncOffsetMs: number;
+  accentLyrics: boolean;
+  lastArtUrl: string | null;
 }) {
   if (status === "forbidden") {
     return (
@@ -144,12 +238,7 @@ function CenterContent({
   }
 
   if (!playback.isActive) {
-    return (
-      <StatusCard
-        title="Nothing playing"
-        subtitle="Start a song in the Spotify app on your Tesla and the lyrics will appear here."
-      />
-    );
+    return <IdleScreen lastArtUrl={lastArtUrl} />;
   }
 
   if (playback.type === "ad") {
@@ -185,6 +274,8 @@ function CenterContent({
         key={playback.trackId ?? lyrics.trackKey}
         lines={lyrics.lines}
         anchor={anchor}
+        syncOffsetMs={syncOffsetMs}
+        accentLyrics={accentLyrics}
       />
     );
   }

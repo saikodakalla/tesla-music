@@ -22,6 +22,21 @@ export interface LyricsDoc {
   notFound: boolean;
 }
 
+/**
+ * A lyrics candidate surfaced by a provider search, for the "wrong lyrics?
+ * re-pick" flow. `id` is the provider-specific record id passed back to
+ * `getById` to fetch the full document.
+ */
+export interface LyricsCandidate {
+  id: string;
+  trackName: string;
+  artistName: string;
+  albumName: string | null;
+  durationSec: number | null;
+  hasSynced: boolean;
+  instrumental: boolean;
+}
+
 export type CurrentlyPlayingType = "track" | "episode" | "ad" | "unknown";
 
 /**

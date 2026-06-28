@@ -22,8 +22,9 @@ const ACTIVE_Y_RATIO = 0.42;
 
 // Highlight offset, in ms. Positive = earlier, negative = later. Small positive
 // value compensates for fetch latency + render/transition lag. If lyrics feel
-// late, raise it; if early, lower it (or go negative).
-const LYRIC_LEAD_MS = 200;
+// late, raise it; if early, lower it (or go negative). Exported so the sync
+// calibrator can account for it when deriving a user offset.
+export const LYRIC_LEAD_MS = 200;
 
 // How long to leave auto-scroll suspended after the user scrolls, before
 // snapping back to the active line.
@@ -48,9 +49,15 @@ function findActiveIndex(lines: LyricLine[], posMs: number): number {
 export default function LyricsView({
   lines,
   anchor,
+  syncOffsetMs = 0,
+  accentLyrics = true,
 }: {
   lines: LyricLine[];
   anchor: PlaybackAnchor | null;
+  /** User sync nudge (ms). Positive = lyrics earlier, negative = later. */
+  syncOffsetMs?: number;
+  /** Tint the active line with the album accent (vs. plain white). */
+  accentLyrics?: boolean;
 }) {
   const [activeIndex, setActiveIndex] = useState(-1);
   const [inGap, setInGap] = useState(false);
@@ -61,6 +68,9 @@ export default function LyricsView({
 
   const anchorRef = useRef<PlaybackAnchor | null>(anchor);
   const linesRef = useRef<LyricLine[]>(lines);
+  // Live user sync nudge, read inside the rAF loop so changes apply instantly
+  // without tearing down the loop.
+  const offsetRef = useRef(syncOffsetMs);
   const userScrollingRef = useRef(false);
   const resumeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Timestamp until which `scroll` events are our own programmatic auto-scroll
@@ -73,6 +83,9 @@ export default function LyricsView({
   useEffect(() => {
     linesRef.current = lines;
   }, [lines]);
+  useEffect(() => {
+    offsetRef.current = syncOffsetMs;
+  }, [syncOffsetMs]);
 
   // Drive the active line from the interpolated playback clock.
   useEffect(() => {
@@ -84,7 +97,9 @@ export default function LyricsView({
         const pos =
           (a.isPlaying
             ? a.progressMs + (performance.now() - a.receivedAt)
-            : a.progressMs) + LYRIC_LEAD_MS;
+            : a.progressMs) +
+          LYRIC_LEAD_MS +
+          offsetRef.current;
 
         const idx = findActiveIndex(ls, pos);
         setActiveIndex((prev) => (prev === idx ? prev : idx));
@@ -182,9 +197,12 @@ export default function LyricsView({
                 }}
                 className="mx-auto w-full max-w-[1400px] px-[7vw] py-[1.15vh] text-left font-extrabold leading-[1.18]"
                 style={{
-                  fontSize: "clamp(2rem, 4.1vw, 3.6rem)",
+                  fontSize:
+                    "calc(clamp(2rem, 4.1vw, 3.6rem) * var(--lyric-scale, 1))",
                   color: isActive
-                    ? "#ffffff"
+                    ? accentLyrics
+                      ? "var(--accent, #ffffff)"
+                      : "#ffffff"
                     : isPast
                     ? "rgba(255,255,255,0.28)"
                     : "rgba(255,255,255,0.38)",
