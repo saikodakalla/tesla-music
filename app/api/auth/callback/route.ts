@@ -27,9 +27,13 @@ export async function GET(req: NextRequest) {
     return redirectClearing(home);
   }
 
-  const { verifier, state: savedState } = readOAuthTransientCookies();
+  const {
+    verifier,
+    state: savedState,
+    redirectUri,
+  } = readOAuthTransientCookies();
 
-  if (!code || !state || !savedState || !verifier) {
+  if (!code || !state || !savedState || !verifier || !redirectUri) {
     home.searchParams.set("auth_error", "missing_params");
     return redirectClearing(home);
   }
@@ -39,7 +43,9 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const session = await exchangeCodeForTokens(code, verifier);
+    // Replay the SAME redirect_uri sent to /authorize — Spotify requires an
+    // exact match at the token exchange.
+    const session = await exchangeCodeForTokens(code, verifier, redirectUri);
     await writeSession(session);
     clearOAuthTransientCookies();
     return NextResponse.redirect(home.toString());

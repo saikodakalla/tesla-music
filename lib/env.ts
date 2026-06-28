@@ -22,8 +22,15 @@ export const env = {
   get spotifyClientSecret() {
     return required("SPOTIFY_CLIENT_SECRET");
   },
+  /**
+   * Optional. The redirect URI is now derived per-request from the host the
+   * user is actually on (see lib/oauth.ts), so it matches the dashboard
+   * allow-list whether that's 127.0.0.1 locally or the deployed domain on the
+   * Tesla. This env var is only consulted as a fallback when the host can't be
+   * derived from the request.
+   */
   get spotifyRedirectUri() {
-    return required("SPOTIFY_REDIRECT_URI");
+    return process.env.SPOTIFY_REDIRECT_URI?.trim() ?? "";
   },
   get sessionSecret() {
     const s = required("SESSION_SECRET");

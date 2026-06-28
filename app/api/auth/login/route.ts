@@ -6,6 +6,7 @@ import {
   generateState,
 } from "@/lib/pkce";
 import { setOAuthTransientCookies } from "@/lib/session";
+import { resolveRedirectUri } from "@/lib/oauth";
 
 export const dynamic = "force-dynamic";
 
@@ -28,12 +29,16 @@ export async function GET(req: NextRequest) {
   const challenge = deriveCodeChallenge(verifier);
   const state = generateState();
 
-  setOAuthTransientCookies(verifier, state);
+  // Derive the redirect_uri from the host the user is actually on (the Tesla
+  // browser hits the deployed domain, not 127.0.0.1) so it matches the dashboard
+  // allow-list. Replay the exact same value at the token exchange via the cookie.
+  const redirectUri = resolveRedirectUri(req);
+  setOAuthTransientCookies(verifier, state, redirectUri);
 
   const authorizeUrl = new URL("https://accounts.spotify.com/authorize");
   authorizeUrl.searchParams.set("response_type", "code");
   authorizeUrl.searchParams.set("client_id", env.spotifyClientId);
-  authorizeUrl.searchParams.set("redirect_uri", env.spotifyRedirectUri);
+  authorizeUrl.searchParams.set("redirect_uri", redirectUri);
   authorizeUrl.searchParams.set("scope", SPOTIFY_SCOPES);
   authorizeUrl.searchParams.set("state", state);
   authorizeUrl.searchParams.set("code_challenge_method", "S256");

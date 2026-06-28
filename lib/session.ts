@@ -89,8 +89,15 @@ export function clearSession(): void {
 /** Short-lived httpOnly cookies that carry PKCE state across the redirect. */
 export const PKCE_VERIFIER_COOKIE = "tl_pkce_verifier";
 export const OAUTH_STATE_COOKIE = "tl_oauth_state";
+// The exact redirect_uri sent to /authorize must be replayed verbatim at the
+// token exchange, so we carry it across the round-trip rather than re-deriving.
+export const OAUTH_REDIRECT_URI_COOKIE = "tl_oauth_redirect_uri";
 
-export function setOAuthTransientCookies(verifier: string, state: string): void {
+export function setOAuthTransientCookies(
+  verifier: string,
+  state: string,
+  redirectUri: string,
+): void {
   const opts = {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
@@ -100,15 +107,18 @@ export function setOAuthTransientCookies(verifier: string, state: string): void 
   };
   cookies().set(PKCE_VERIFIER_COOKIE, verifier, opts);
   cookies().set(OAUTH_STATE_COOKIE, state, opts);
+  cookies().set(OAUTH_REDIRECT_URI_COOKIE, redirectUri, opts);
 }
 
 export function readOAuthTransientCookies(): {
   verifier: string | null;
   state: string | null;
+  redirectUri: string | null;
 } {
   return {
     verifier: cookies().get(PKCE_VERIFIER_COOKIE)?.value ?? null,
     state: cookies().get(OAUTH_STATE_COOKIE)?.value ?? null,
+    redirectUri: cookies().get(OAUTH_REDIRECT_URI_COOKIE)?.value ?? null,
   };
 }
 
@@ -118,4 +128,5 @@ export function clearOAuthTransientCookies(): void {
     maxAge: 0,
   });
   cookies().set(OAUTH_STATE_COOKIE, "", { path: "/", maxAge: 0 });
+  cookies().set(OAUTH_REDIRECT_URI_COOKIE, "", { path: "/", maxAge: 0 });
 }

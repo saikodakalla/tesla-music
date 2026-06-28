@@ -49,11 +49,13 @@ function basicAuthHeader(): string {
 export async function exchangeCodeForTokens(
   code: string,
   codeVerifier: string,
+  redirectUri: string,
 ): Promise<SessionData> {
   const body = new URLSearchParams({
     grant_type: "authorization_code",
     code,
-    redirect_uri: env.spotifyRedirectUri,
+    // Must be byte-for-byte the redirect_uri sent to /authorize.
+    redirect_uri: redirectUri,
     client_id: env.spotifyClientId,
     code_verifier: codeVerifier,
   });
