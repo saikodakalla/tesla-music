@@ -88,24 +88,24 @@ export function useLyrics(
         })();
 
     // Retry transient failures (the lyrics endpoint returns 502 when LRCLIB is
-    // briefly unreachable) instead of permanently showing "no lyrics" for a
-    // song that actually has them. A real "not found" comes back as 200 with
-    // `notFound: true`, so it is NOT retried here. Each attempt has its own
-    // timeout so a hung request can't leave the UI stuck on "Finding lyrics…".
-    // The timeout exceeds the server's own worst case so we don't abort it
-    // mid-lookup and false-fail.
+    // briefly unreachable or slow) instead of showing "no lyrics" for a song
+    // that actually has them. A real "not found" comes back as 200 with
+    // `notFound: true` — that's a definitive answer and is shown immediately,
+    // never retried. Each attempt has its own timeout so a hung request can't
+    // leave the UI stuck; the timeout exceeds the server's own worst case so we
+    // don't abort it mid-lookup and false-fail.
     //
-    // We only retry FAST failures: a quick error is likely a transient blip
-    // worth another shot, whereas a slow failure means LRCLIB itself is slow —
-    // retrying would just double the wait, so we fall back to "no lyrics"
-    // immediately rather than make the user stare at "Finding lyrics…".
-    const MAX_ATTEMPTS = 2;
+    // Crucially we retry BOTH fast and slow failures. A cold LRCLIB lookup is
+    // often slow on the first hit and fast once warm — that's why a manual
+    // refresh "finds" lyrics the second time. So rather than give up on a slow
+    // first failure (which surfaced a wrong "no synced lyrics"), we keep the UI
+    // on "Finding lyrics…" and re-request with backoff until LRCLIB answers.
+    const MAX_ATTEMPTS = 6;
     const ATTEMPT_TIMEOUT_MS = 12000;
-    const FAST_FAIL_MS = 3000;
+    const BACKOFF_MS = [400, 800, 1500, 2500, 4000];
 
     const attempt = (n: number): void => {
       if (cancelled) return;
-      const startedAt = performance.now();
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), ATTEMPT_TIMEOUT_MS);
 
@@ -134,11 +134,13 @@ export function useLyrics(
         })
         .catch(() => {
           if (cancelled) return;
-          const elapsed = performance.now() - startedAt;
-          if (n < MAX_ATTEMPTS && elapsed < FAST_FAIL_MS) {
+          if (n < MAX_ATTEMPTS) {
+            // Keep `loading` true so the UI stays on "Finding lyrics…" rather
+            // than flashing a wrong "no synced lyrics" between attempts.
+            const delay = BACKOFF_MS[Math.min(n - 1, BACKOFF_MS.length - 1)];
             setTimeout(() => {
               if (!cancelled) attempt(n + 1);
-            }, 400);
+            }, delay);
             return;
           }
           giveUp();
