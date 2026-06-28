@@ -14,6 +14,7 @@ export default function TopBar({
   dimmed,
   onToggleDim,
   onToggleFullscreen,
+  onOpenSettings,
   reconnecting,
 }: {
   playback: PlaybackState | null;
@@ -21,6 +22,7 @@ export default function TopBar({
   dimmed: boolean;
   onToggleDim: () => void;
   onToggleFullscreen: () => void;
+  onOpenSettings: () => void;
   reconnecting: boolean;
 }) {
   return (
@@ -71,6 +73,10 @@ export default function TopBar({
         ) : (
           <SpotifyMark className="mr-1" />
         )}
+
+        <ControlButton label="Lyrics settings" onClick={onOpenSettings}>
+          <SlidersIcon />
+        </ControlButton>
 
         <ControlButton label={dimmed ? "Brighten" : "Dim"} onClick={onToggleDim}>
           {dimmed ? <SunIcon /> : <MoonIcon />}
@@ -129,6 +135,13 @@ function SunIcon() {
     <svg viewBox="0 0 24 24" className={iconClass} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="4" />
       <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+    </svg>
+  );
+}
+function SlidersIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className={iconClass} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6" />
     </svg>
   );
 }

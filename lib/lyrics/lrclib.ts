@@ -1,5 +1,5 @@
 import { env } from "../env";
-import type { LyricsDoc } from "../types";
+import type { LyricsCandidate, LyricsDoc } from "../types";
 import type { LyricsProvider, TrackQuery } from "./provider";
 import { parseLrc } from "./lrc";
 import { normalizeArtist, normalizeTitle, trackKey } from "./match";
@@ -63,6 +63,56 @@ export class LrclibProvider implements LyricsProvider {
       return notFound(key, durationMs); // genuine miss; safe to cache
     }
 
+    return this.recordToDoc(record, key, durationMs);
+  }
+
+  /**
+   * Free-text search → candidate list for the "wrong lyrics? re-pick" flow.
+   * Returns [] on a genuine empty result; throws on transient failure so the
+   * route can surface it. Ranks synced records first, then closest by title.
+   */
+  async search(term: string): Promise<LyricsCandidate[]> {
+    const params = new URLSearchParams({ q: term });
+    const res = await this.fetchJson(
+      `${BASE}/search?${params.toString()}`,
+      LrclibProvider.SEARCH_TIMEOUT_MS,
+    );
+    if (res.status === 404) return [];
+    const results = (await res.json()) as LrclibRecord[];
+    if (!Array.isArray(results)) return [];
+
+    return results
+      .map((r) => ({
+        id: String(r.id),
+        trackName: r.trackName,
+        artistName: r.artistName,
+        albumName: r.albumName,
+        durationSec: r.duration,
+        hasSynced: !!(r.syncedLyrics && r.syncedLyrics.trim()),
+        instrumental: r.instrumental,
+      }))
+      .sort((a, b) => (a.hasSynced === b.hasSynced ? 0 : a.hasSynced ? -1 : 1));
+  }
+
+  /** Fetch a specific record by LRCLIB id and normalise it to a LyricsDoc. */
+  async getById(id: string): Promise<LyricsDoc> {
+    const res = await this.fetchJson(
+      `${BASE}/get/${encodeURIComponent(id)}`,
+      LrclibProvider.GET_TIMEOUT_MS,
+    );
+    const key = `lrclib:id:${id}`;
+    if (res.status === 404) return notFound(key, 0);
+    const record = (await res.json()) as LrclibRecord;
+    const durationMs = (record.duration ?? 0) * 1000;
+    return this.recordToDoc(record, key, durationMs);
+  }
+
+  /** Map a raw LRCLIB record into the normalised LyricsDoc shape. */
+  private recordToDoc(
+    record: LrclibRecord,
+    key: string,
+    durationMs: number,
+  ): LyricsDoc {
     if (record.instrumental) {
       return {
         source: this.name,
