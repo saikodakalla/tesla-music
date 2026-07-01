@@ -51,6 +51,7 @@ export default function LyricsView({
   anchor,
   syncOffsetMs = 0,
   accentLyrics = true,
+  onLineTap,
 }: {
   lines: LyricLine[];
   anchor: PlaybackAnchor | null;
@@ -58,6 +59,8 @@ export default function LyricsView({
   syncOffsetMs?: number;
   /** Tint the active line with the album accent (vs. plain white). */
   accentLyrics?: boolean;
+  /** Called with a line's index into `lines` when it's tapped. */
+  onLineTap?: (index: number) => void;
 }) {
   const [activeIndex, setActiveIndex] = useState(-1);
   const [inGap, setInGap] = useState(false);
@@ -189,13 +192,18 @@ export default function LyricsView({
           {lines.map((line, idx) => {
             const isActive = idx === activeIndex;
             const isPast = activeIndex >= 0 && idx < activeIndex;
+            const tappable = !!onLineTap && line.text.trim() !== "";
             return (
               <p
                 key={idx}
                 ref={(el) => {
                   lineRefs.current[idx] = el;
                 }}
-                className="mx-auto w-full max-w-[1400px] px-[7vw] py-[1.15vh] text-left font-extrabold leading-[1.18]"
+                onClick={tappable ? () => onLineTap!(idx) : undefined}
+                role={tappable ? "button" : undefined}
+                className={`mx-auto w-full max-w-[1400px] px-[7vw] py-[1.15vh] text-left font-extrabold leading-[1.18] ${
+                  tappable ? "cursor-pointer active:opacity-70" : ""
+                }`}
                 style={{
                   fontSize:
                     "calc(clamp(2rem, 4.1vw, 3.6rem) * var(--lyric-scale, 1))",

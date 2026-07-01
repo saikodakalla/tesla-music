@@ -8,7 +8,9 @@ import { useArtTheme } from "@/hooks/useArtTheme";
 import { useLyricSettings } from "@/hooks/useLyricSettings";
 import { useLyricOverride } from "@/hooks/useLyricOverride";
 import { useThemeSettings } from "@/hooks/useThemeSettings";
+import { useLyricExplanation } from "@/hooks/useLyricExplanation";
 import AmbientBackdrop from "./AmbientBackdrop";
+import ExplainSheet from "./ExplainSheet";
 import GradientMesh from "./GradientMesh";
 import IdleScreen from "./IdleScreen";
 import LyricsControls from "./LyricsControls";
@@ -48,6 +50,8 @@ export default function Player({
   const [dimmed, setDimmed] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [calibrating, setCalibrating] = useState(false);
+  const [explainIndex, setExplainIndex] = useState<number | null>(null);
+  const explanation = useLyricExplanation();
   const containerRef = useRef<HTMLDivElement>(null);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -63,6 +67,32 @@ export default function Player({
   useEffect(() => {
     if (status === "reauth") router.refresh();
   }, [status, router]);
+
+  // Dismiss any open explanation when the song changes.
+  useEffect(() => {
+    setExplainIndex(null);
+    explanation.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playback?.trackId]);
+
+  const handleLineTap = useCallback(
+    (idx: number) => {
+      if (!lyrics || !playback) return;
+      const line = lyrics.lines[idx];
+      if (!line || !line.text.trim()) return;
+      setExplainIndex(idx);
+      explanation.explain({
+        trackKey: lyrics.trackKey,
+        lineIndex: idx,
+        line: line.text,
+        prevLine: lyrics.lines[idx - 1]?.text,
+        nextLine: lyrics.lines[idx + 1]?.text,
+        title: playback.title ?? "",
+        artist: playback.artists ?? "",
+      });
+    },
+    [lyrics, playback, explanation],
+  );
 
   // Auto-hide chrome + cursor after inactivity (docs/08 §8.5, §8.7).
   const poke = useCallback(() => {
@@ -148,6 +178,7 @@ export default function Player({
           syncOffsetMs={syncOffsetMs}
           accentLyrics={theme.accentLyrics}
           lastArtUrl={lastArtRef.current}
+          onLineTap={handleLineTap}
         />
       </div>
 
@@ -196,6 +227,19 @@ export default function Player({
         )}
 
       {showReconnectHint && <BottomPill text="Reconnecting…" tone="warn" />}
+
+      {explainIndex !== null && lyrics?.lines[explainIndex] && (
+        <ExplainSheet
+          line={lyrics.lines[explainIndex].text}
+          status={explanation.status === "idle" ? "loading" : explanation.status}
+          explanation={explanation.explanation}
+          onClose={() => {
+            setExplainIndex(null);
+            explanation.reset();
+          }}
+          onRetry={() => handleLineTap(explainIndex)}
+        />
+      )}
     </main>
   );
 }
@@ -209,6 +253,7 @@ function CenterContent({
   syncOffsetMs,
   accentLyrics,
   lastArtUrl,
+  onLineTap,
 }: {
   status: ReturnType<typeof usePlayback>["status"];
   playback: ReturnType<typeof usePlayback>["playback"];
@@ -218,6 +263,7 @@ function CenterContent({
   syncOffsetMs: number;
   accentLyrics: boolean;
   lastArtUrl: string | null;
+  onLineTap: (index: number) => void;
 }) {
   if (status === "forbidden") {
     return (
@@ -276,6 +322,7 @@ function CenterContent({
         anchor={anchor}
         syncOffsetMs={syncOffsetMs}
         accentLyrics={accentLyrics}
+        onLineTap={onLineTap}
       />
     );
   }

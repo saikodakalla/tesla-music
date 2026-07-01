@@ -47,6 +47,9 @@ export const env = {
       "tesla-lyrics (https://github.com/tesla-lyrics/app)"
     );
   },
+  get deepseekApiKey() {
+    return required("DEEPSEEK_API_KEY");
+  },
 };
 
 /**
