@@ -205,6 +205,7 @@ export default function Player({
           accentLyrics={theme.accentLyrics}
           transformedLines={language.transformedLines}
           lyricDisplayMode={language.displayMode}
+          showSongSections={theme.showSongSections}
           lastArtUrl={lastArtRef.current}
           onLineTap={handleLineTap}
         />
@@ -231,6 +232,8 @@ export default function Player({
         setAccentLyrics={theme.setAccentLyrics}
         ambientMotion={theme.ambientMotion}
         setAmbientMotion={theme.setAmbientMotion}
+        showSongSections={theme.showSongSections}
+        setShowSongSections={theme.setShowSongSections}
         canCalibrate={canCalibrate}
         onStartCalibration={() => {
           setSettingsOpen(false);
@@ -286,6 +289,7 @@ function CenterContent({
   accentLyrics,
   transformedLines,
   lyricDisplayMode,
+  showSongSections,
   lastArtUrl,
   onLineTap,
 }: {
@@ -298,6 +302,7 @@ function CenterContent({
   accentLyrics: boolean;
   transformedLines: string[] | null;
   lyricDisplayMode: ReturnType<typeof useLyricTransform>["displayMode"];
+  showSongSections: boolean;
   lastArtUrl: string | null;
   onLineTap: (index: number) => void;
 }) {
@@ -360,6 +365,7 @@ function CenterContent({
         accentLyrics={accentLyrics}
         transformedLines={transformedLines}
         displayMode={lyricDisplayMode}
+        showSongSections={showSongSections}
         onLineTap={onLineTap}
       />
     );

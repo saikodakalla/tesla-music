@@ -46,6 +46,8 @@ export default function LyricsControls({
   setAccentLyrics,
   ambientMotion,
   setAmbientMotion,
+  showSongSections,
+  setShowSongSections,
   canCalibrate,
   onStartCalibration,
 }: {
@@ -69,6 +71,8 @@ export default function LyricsControls({
   setAccentLyrics: (v: boolean) => void;
   ambientMotion: boolean;
   setAmbientMotion: (v: boolean) => void;
+  showSongSections: boolean;
+  setShowSongSections: (v: boolean) => void;
   canCalibrate: boolean;
   onStartCalibration: () => void;
 }) {
@@ -142,6 +146,8 @@ export default function LyricsControls({
           setAccentLyrics={setAccentLyrics}
           ambientMotion={ambientMotion}
           setAmbientMotion={setAmbientMotion}
+          showSongSections={showSongSections}
+          setShowSongSections={setShowSongSections}
         />
 
         <LanguageSection language={language} />
@@ -564,6 +570,8 @@ function ThemeSection({
   setAccentLyrics,
   ambientMotion,
   setAmbientMotion,
+  showSongSections,
+  setShowSongSections,
 }: {
   backdrop: BackdropStyle;
   setBackdrop: (v: BackdropStyle) => void;
@@ -571,6 +579,8 @@ function ThemeSection({
   setAccentLyrics: (v: boolean) => void;
   ambientMotion: boolean;
   setAmbientMotion: (v: boolean) => void;
+  showSongSections: boolean;
+  setShowSongSections: (v: boolean) => void;
 }) {
   return (
     <>
@@ -586,6 +596,13 @@ function ThemeSection({
       </Row>
       <Row label="Ambient motion" hint="Slow drifting background.">
         <Toggle on={ambientMotion} onChange={setAmbientMotion} label="Ambient motion" />
+      </Row>
+      <Row label="Song sections" hint="Label detected verses, choruses, and bridges.">
+        <Toggle
+          on={showSongSections}
+          onChange={setShowSongSections}
+          label="Song sections"
+        />
       </Row>
     </>
   );
