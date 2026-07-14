@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { LyricsDoc, PlaybackState } from "@/lib/types";
+import { getPrefetchedLyrics } from "./lyricsPrefetchCache";
 
 /**
  * Fetches lyrics whenever the track changes (docs/06 §6.4). Keeps the previous
@@ -66,6 +67,16 @@ export function useLyrics(
     const trackChanged = currentKey.current !== fetchKey;
     currentKey.current = fetchKey;
     let cancelled = false;
+
+    // Queue prefetches are keyed by Spotify track ID. Use the warm in-session
+    // document immediately unless the listener has chosen a manual override.
+    const prefetched = !overrideId ? getPrefetchedLyrics(trackId) : null;
+    if (prefetched) {
+      setLyrics(prefetched);
+      setLoading(false);
+      return;
+    }
+
     // On a real song change (or override switch), drop the previous lyrics
     // immediately so we never show stale words — the UI shows a brief
     // "Finding lyrics…" until the new ones load.

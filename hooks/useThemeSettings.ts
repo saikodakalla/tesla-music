@@ -13,6 +13,7 @@ export type BackdropStyle = "blur" | "mesh" | "minimal";
 const BACKDROP_KEY = "tl_backdrop";
 const ACCENT_LYRICS_KEY = "tl_accent_lyrics";
 const MOTION_KEY = "tl_ambient_motion";
+const SECTIONS_KEY = "tl_song_sections";
 
 export const BACKDROP_OPTIONS: { value: BackdropStyle; label: string }[] = [
   { value: "blur", label: "Album blur" },
@@ -27,6 +28,8 @@ export interface ThemeSettings {
   setAccentLyrics: (v: boolean) => void;
   ambientMotion: boolean;
   setAmbientMotion: (v: boolean) => void;
+  showSongSections: boolean;
+  setShowSongSections: (v: boolean) => void;
 }
 
 function readBool(key: string, fallback: boolean): boolean {
@@ -39,6 +42,7 @@ export function useThemeSettings(): ThemeSettings {
   const [backdrop, setBackdropState] = useState<BackdropStyle>("blur");
   const [accentLyrics, setAccentLyricsState] = useState(true);
   const [ambientMotion, setAmbientMotionState] = useState(true);
+  const [showSongSections, setShowSongSectionsState] = useState(true);
 
   useEffect(() => {
     try {
@@ -46,6 +50,7 @@ export function useThemeSettings(): ThemeSettings {
       if (b === "blur" || b === "mesh" || b === "minimal") setBackdropState(b);
       setAccentLyricsState(readBool(ACCENT_LYRICS_KEY, true));
       setAmbientMotionState(readBool(MOTION_KEY, true));
+      setShowSongSectionsState(readBool(SECTIONS_KEY, true));
     } catch {
       /* localStorage unavailable — keep defaults */
     }
@@ -71,6 +76,10 @@ export function useThemeSettings(): ThemeSettings {
     setAmbientMotionState(v);
     persist(MOTION_KEY, v ? "1" : "0");
   }, []);
+  const setShowSongSections = useCallback((v: boolean) => {
+    setShowSongSectionsState(v);
+    persist(SECTIONS_KEY, v ? "1" : "0");
+  }, []);
 
   return {
     backdrop,
@@ -79,5 +88,7 @@ export function useThemeSettings(): ThemeSettings {
     setAccentLyrics,
     ambientMotion,
     setAmbientMotion,
+    showSongSections,
+    setShowSongSections,
   };
 }

@@ -9,6 +9,9 @@ import { useLyricSettings } from "@/hooks/useLyricSettings";
 import { useLyricOverride } from "@/hooks/useLyricOverride";
 import { useThemeSettings } from "@/hooks/useThemeSettings";
 import { useLyricExplanation } from "@/hooks/useLyricExplanation";
+import { useQueue } from "@/hooks/useQueue";
+import { useLyricTransform } from "@/hooks/useLyricTransform";
+import { usePlaybackControls } from "@/hooks/usePlaybackControls";
 import AmbientBackdrop from "./AmbientBackdrop";
 import ExplainSheet from "./ExplainSheet";
 import GradientMesh from "./GradientMesh";
@@ -31,7 +34,13 @@ export default function Player({
   initialLyrics?: LyricsDoc | null;
 }) {
   const router = useRouter();
-  const { playback, anchor, status, outageMs } = usePlayback(initialPlayback);
+  const { playback, anchor, status, outageMs, refresh } =
+    usePlayback(initialPlayback);
+  const queue = useQueue(playback?.trackId);
+  const playbackControls = usePlaybackControls({
+    trackId: playback?.trackId,
+    onSuccess: refresh,
+  });
 
   // Lyric display prefs (font size + sync nudge) and per-track manual override.
   const {
@@ -47,6 +56,12 @@ export default function Player({
     playback?.trackId,
   );
   const { lyrics, loading } = useLyrics(playback, initialLyrics, overrideId);
+  const language = useLyricTransform({
+    trackKey: lyrics?.synced ? lyrics.trackKey : null,
+    title: playback?.title,
+    artist: playback?.artists,
+    lines: lyrics?.synced ? lyrics.lines : null,
+  });
 
   // Album-art-derived accent + palette for the ambient theme, and the look
   // preferences that decide how they're used.
@@ -158,6 +173,10 @@ export default function Player({
 
       <TopBar
         playback={playback}
+        nextTrack={queue[0] ?? null}
+        controlPending={playbackControls.pending}
+        controlError={playbackControls.error}
+        onPlaybackCommand={playbackControls.send}
         visible={uiVisible}
         dimmed={dimmed}
         onToggleDim={() => {
@@ -184,6 +203,9 @@ export default function Player({
           loading={loading}
           syncOffsetMs={syncOffsetMs}
           accentLyrics={theme.accentLyrics}
+          transformedLines={language.transformedLines}
+          lyricDisplayMode={language.displayMode}
+          showSongSections={theme.showSongSections}
           lastArtUrl={lastArtRef.current}
           onLineTap={handleLineTap}
         />
@@ -200,14 +222,18 @@ export default function Player({
         trackSyncOffsetMs={trackSyncOffsetMs}
         setTrackSyncOffsetMs={setTrackSyncOffsetMs}
         overrideId={overrideId}
+        activeLyricsId={lyrics?.providerId ?? null}
         setOverride={setOverride}
         clearOverride={clearOverride}
+        language={language}
         backdrop={theme.backdrop}
         setBackdrop={theme.setBackdrop}
         accentLyrics={theme.accentLyrics}
         setAccentLyrics={theme.setAccentLyrics}
         ambientMotion={theme.ambientMotion}
         setAmbientMotion={theme.setAmbientMotion}
+        showSongSections={theme.showSongSections}
+        setShowSongSections={theme.setShowSongSections}
         canCalibrate={canCalibrate}
         onStartCalibration={() => {
           setSettingsOpen(false);
@@ -261,6 +287,9 @@ function CenterContent({
   loading,
   syncOffsetMs,
   accentLyrics,
+  transformedLines,
+  lyricDisplayMode,
+  showSongSections,
   lastArtUrl,
   onLineTap,
 }: {
@@ -271,6 +300,9 @@ function CenterContent({
   loading: boolean;
   syncOffsetMs: number;
   accentLyrics: boolean;
+  transformedLines: string[] | null;
+  lyricDisplayMode: ReturnType<typeof useLyricTransform>["displayMode"];
+  showSongSections: boolean;
   lastArtUrl: string | null;
   onLineTap: (index: number) => void;
 }) {
@@ -331,6 +363,9 @@ function CenterContent({
         anchor={anchor}
         syncOffsetMs={syncOffsetMs}
         accentLyrics={accentLyrics}
+        transformedLines={transformedLines}
+        displayMode={lyricDisplayMode}
+        showSongSections={showSongSections}
         onLineTap={onLineTap}
       />
     );

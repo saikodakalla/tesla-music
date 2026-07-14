@@ -14,6 +14,10 @@ import {
   BACKDROP_OPTIONS,
   type BackdropStyle,
 } from "@/hooks/useThemeSettings";
+import {
+  LANGUAGE_OPTIONS,
+  type UseLyricTransformResult,
+} from "@/hooks/useLyricTransform";
 
 /**
  * The lyric-accuracy panel (docs/16): font-size (A−/A+), manual sync-offset
@@ -32,14 +36,18 @@ export default function LyricsControls({
   trackSyncOffsetMs,
   setTrackSyncOffsetMs,
   overrideId,
+  activeLyricsId,
   setOverride,
   clearOverride,
+  language,
   backdrop,
   setBackdrop,
   accentLyrics,
   setAccentLyrics,
   ambientMotion,
   setAmbientMotion,
+  showSongSections,
+  setShowSongSections,
   canCalibrate,
   onStartCalibration,
 }: {
@@ -53,14 +61,18 @@ export default function LyricsControls({
   trackSyncOffsetMs: number;
   setTrackSyncOffsetMs: (v: number) => void;
   overrideId: string | null;
+  activeLyricsId: string | null;
   setOverride: (trackId: string, recordId: string) => void;
   clearOverride: (trackId: string) => void;
+  language: UseLyricTransformResult;
   backdrop: BackdropStyle;
   setBackdrop: (v: BackdropStyle) => void;
   accentLyrics: boolean;
   setAccentLyrics: (v: boolean) => void;
   ambientMotion: boolean;
   setAmbientMotion: (v: boolean) => void;
+  showSongSections: boolean;
+  setShowSongSections: (v: boolean) => void;
   canCalibrate: boolean;
   onStartCalibration: () => void;
 }) {
@@ -75,7 +87,7 @@ export default function LyricsControls({
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"
       />
 
-      <section className="relative w-full max-w-3xl rounded-t-3xl border-t border-white/10 bg-ink-900/95 p-6 pb-8 shadow-2xl">
+      <section className="relative max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-t-3xl border-t border-white/10 bg-ink-900/95 p-6 pb-8 shadow-2xl">
         <div className="mb-5 flex items-center justify-between">
           <h2 className="text-xl font-semibold text-lyric-active">
             Lyrics settings
@@ -134,15 +146,102 @@ export default function LyricsControls({
           setAccentLyrics={setAccentLyrics}
           ambientMotion={ambientMotion}
           setAmbientMotion={setAmbientMotion}
+          showSongSections={showSongSections}
+          setShowSongSections={setShowSongSections}
         />
+
+        <LanguageSection language={language} />
 
         <FixLyricsRow
           playback={playback}
           overrideId={overrideId}
+          activeLyricsId={activeLyricsId}
           setOverride={setOverride}
           clearOverride={clearOverride}
         />
       </section>
+    </div>
+  );
+}
+
+/* ----------------------------- Language ----------------------------- */
+
+function LanguageSection({
+  language,
+}: {
+  language: UseLyricTransformResult;
+}) {
+  const actionLabel =
+    language.kind === "translation" ? "Generate translation" : "Generate romanization";
+
+  return (
+    <div className="mt-2 border-t border-white/8 pt-2">
+      <Row label="Language mode" hint="Generated only when you request it.">
+        <Segmented
+          value={language.kind}
+          options={[
+            { value: "translation", label: "Translate" },
+            { value: "romanization", label: "Romanize" },
+          ]}
+          onChange={language.setKind}
+        />
+      </Row>
+
+      {language.kind === "translation" && (
+        <Row label="Translate to">
+          <select
+            value={language.targetLanguage}
+            onChange={(event) => language.setTargetLanguage(event.target.value)}
+            className="h-12 rounded-full border border-white/10 bg-ink-800 px-5 text-sm font-semibold text-lyric-active outline-none focus:ring-2"
+            style={{ ["--tw-ring-color" as string]: "var(--accent)" }}
+          >
+            {LANGUAGE_OPTIONS.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </Row>
+      )}
+
+      <Row label="Display">
+        <Segmented
+          value={language.displayMode}
+          options={[
+            { value: "original", label: "Original" },
+            { value: "both", label: "Both" },
+            { value: "transformed", label: "New text" },
+          ]}
+          onChange={language.setDisplayMode}
+        />
+      </Row>
+
+      <div className="flex items-center justify-between gap-4 py-4">
+        <div>
+          <p className="text-base font-medium text-lyric-active">{actionLabel}</p>
+          <p className="text-sm text-lyric-dim">
+            AI-generated text may be inaccurate. The result is cached temporarily.
+          </p>
+          {language.status === "error" && (
+            <p className="mt-1 text-sm text-amber-300" role="status">
+              Could not transform these lyrics. Try again.
+            </p>
+          )}
+          {language.status === "success" && (
+            <p className="mt-1 text-sm text-lyric-dim" role="status">
+              Ready. Choose Both or New text to display it.
+            </p>
+          )}
+        </div>
+        <button
+          onClick={language.generate}
+          disabled={!language.canTransform || language.status === "loading"}
+          className="h-12 shrink-0 rounded-full px-5 text-sm font-semibold text-black disabled:opacity-35 active:scale-95"
+          style={{ background: "var(--accent)" }}
+        >
+          {language.status === "loading" ? "Generating…" : "Generate"}
+        </button>
+      </div>
     </div>
   );
 }
@@ -230,11 +329,13 @@ function SyncOffsetRow({
 function FixLyricsRow({
   playback,
   overrideId,
+  activeLyricsId,
   setOverride,
   clearOverride,
 }: {
   playback: PlaybackState | null;
   overrideId: string | null;
+  activeLyricsId: string | null;
   setOverride: (trackId: string, recordId: string) => void;
   clearOverride: (trackId: string) => void;
 }) {
@@ -244,6 +345,13 @@ function FixLyricsRow({
   const [results, setResults] = useState<LyricsCandidate[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
+  const [quickLoading, setQuickLoading] = useState(false);
+  const [quickStatus, setQuickStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    setResults(null);
+    setQuickStatus(null);
+  }, [trackId]);
 
   // Prefill the query with the current track when the search opens.
   useEffect(() => {
@@ -274,6 +382,55 @@ function FixLyricsRow({
     }
   }, [term]);
 
+  const tryAnother = useCallback(async () => {
+    if (!trackId || !playback?.title || !playback.artists) return;
+    setQuickLoading(true);
+    setQuickStatus(null);
+    try {
+      let candidates = results;
+      if (!candidates) {
+        const q = `${playback.title} ${playback.artists}`;
+        const res = await fetch(
+          `/api/lyrics/search?q=${encodeURIComponent(q)}`,
+          { cache: "no-store" },
+        );
+        if (!res.ok) throw new Error(String(res.status));
+        const data = (await res.json()) as { candidates: LyricsCandidate[] };
+        candidates = data.candidates ?? [];
+        setResults(candidates);
+      }
+
+      const targetSec = playback.durationMs / 1000;
+      const ranked = [...candidates].sort((a, b) => {
+        if (a.hasSynced !== b.hasSynced) return a.hasSynced ? -1 : 1;
+        const aDelta =
+          a.durationSec == null ? Number.MAX_SAFE_INTEGER : Math.abs(a.durationSec - targetSec);
+        const bDelta =
+          b.durationSec == null ? Number.MAX_SAFE_INTEGER : Math.abs(b.durationSec - targetSec);
+        return aDelta - bDelta;
+      });
+
+      const currentId = overrideId ?? activeLyricsId;
+      const currentIndex = ranked.findIndex((candidate) => candidate.id === currentId);
+      const next = ranked.find(
+        (candidate, index) =>
+          candidate.id !== currentId && (currentIndex < 0 || index > currentIndex),
+      ) ?? ranked.find((candidate) => candidate.id !== currentId);
+
+      if (!next) {
+        setQuickStatus("No other matches found.");
+        return;
+      }
+
+      setOverride(trackId, next.id);
+      setQuickStatus(`Trying ${next.trackName} by ${next.artistName}.`);
+    } catch {
+      setQuickStatus("Could not load another match.");
+    } finally {
+      setQuickLoading(false);
+    }
+  }, [activeLyricsId, overrideId, playback, results, setOverride, trackId]);
+
   if (!trackId) {
     return (
       <Row label="Fix lyrics">
@@ -295,7 +452,15 @@ function FixLyricsRow({
               : "Wrong words or timing? Pick the right match."}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <button
+            onClick={() => void tryAnother()}
+            disabled={quickLoading}
+            className="h-12 rounded-full px-5 text-sm font-semibold text-black disabled:opacity-40 active:scale-95"
+            style={{ background: "var(--accent)" }}
+          >
+            {quickLoading ? "Finding…" : "Try another"}
+          </button>
           {overrideId && (
             <button
               onClick={() => clearOverride(trackId)}
@@ -312,6 +477,12 @@ function FixLyricsRow({
           </button>
         </div>
       </div>
+
+      {quickStatus && (
+        <p className="mb-3 text-sm text-lyric-dim" role="status">
+          {quickStatus}
+        </p>
+      )}
 
       {openSearch && (
         <div>
@@ -399,6 +570,8 @@ function ThemeSection({
   setAccentLyrics,
   ambientMotion,
   setAmbientMotion,
+  showSongSections,
+  setShowSongSections,
 }: {
   backdrop: BackdropStyle;
   setBackdrop: (v: BackdropStyle) => void;
@@ -406,6 +579,8 @@ function ThemeSection({
   setAccentLyrics: (v: boolean) => void;
   ambientMotion: boolean;
   setAmbientMotion: (v: boolean) => void;
+  showSongSections: boolean;
+  setShowSongSections: (v: boolean) => void;
 }) {
   return (
     <>
@@ -421,6 +596,13 @@ function ThemeSection({
       </Row>
       <Row label="Ambient motion" hint="Slow drifting background.">
         <Toggle on={ambientMotion} onChange={setAmbientMotion} label="Ambient motion" />
+      </Row>
+      <Row label="Song sections" hint="Label detected verses, choruses, and bridges.">
+        <Toggle
+          on={showSongSections}
+          onChange={setShowSongSections}
+          label="Song sections"
+        />
       </Row>
     </>
   );

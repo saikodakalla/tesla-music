@@ -1,7 +1,9 @@
 "use client";
 
 import SpotifyMark from "./SpotifyMark";
-import type { PlaybackState } from "@/lib/types";
+import PlaybackControls from "./PlaybackControls";
+import type { PlaybackState, QueueTrack } from "@/lib/types";
+import type { PlaybackCommand } from "@/hooks/usePlaybackControls";
 
 /**
  * Slim, quiet top bar (docs/08 §8.2): album art, title/artist, the required
@@ -10,6 +12,10 @@ import type { PlaybackState } from "@/lib/types";
  */
 export default function TopBar({
   playback,
+  nextTrack,
+  controlPending,
+  controlError,
+  onPlaybackCommand,
   visible,
   dimmed,
   onToggleDim,
@@ -18,6 +24,10 @@ export default function TopBar({
   reconnecting,
 }: {
   playback: PlaybackState | null;
+  nextTrack: QueueTrack | null;
+  controlPending: PlaybackCommand | null;
+  controlError: string | null;
+  onPlaybackCommand: (command: PlaybackCommand) => void;
   visible: boolean;
   dimmed: boolean;
   onToggleDim: () => void;
@@ -32,7 +42,11 @@ export default function TopBar({
       }`}
     >
       {/* Now playing */}
-      <div className="pointer-events-auto flex min-w-0 items-center gap-4">
+      <div
+        className={`flex min-w-0 items-center gap-4 ${
+          visible ? "pointer-events-auto" : "pointer-events-none"
+        }`}
+      >
         {playback?.albumArtUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -50,11 +64,28 @@ export default function TopBar({
           <p className="truncate text-sm text-lyric-dim">
             {playback?.artists ?? "Waiting for Spotify…"}
           </p>
+          {nextTrack && (
+            <p className="mt-1 truncate text-xs text-lyric-faint">
+              Next: {nextTrack.title} · {nextTrack.artists}
+            </p>
+          )}
         </div>
       </div>
 
+      <PlaybackControls
+        visible={visible}
+        isPlaying={!!playback?.isPlaying}
+        pending={controlPending}
+        error={controlError}
+        onCommand={onPlaybackCommand}
+      />
+
       {/* Attribution + controls */}
-      <div className="pointer-events-auto flex items-center gap-2">
+      <div
+        className={`flex items-center gap-2 ${
+          visible ? "pointer-events-auto" : "pointer-events-none"
+        }`}
+      >
         {reconnecting && (
           <span className="mr-1 hidden text-sm text-amber-400/80 sm:inline">
             Reconnecting…

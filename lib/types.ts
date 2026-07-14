@@ -9,6 +9,8 @@ export interface LyricLine {
 /** Parsed, normalised lyrics document (docs/07 §7.5). */
 export interface LyricsDoc {
   source: string;
+  /** Provider record id, when the source exposes one (used to cycle matches). */
+  providerId?: string;
   trackKey: string;
   durationMs: number;
   /** true → `lines` carries synced timestamps; false → only `plain` is meaningful. */
@@ -65,6 +67,18 @@ export interface PlaybackState {
   isrc: string | null;
   /** Name of the active device (e.g. "Tesla", phone), informational. */
   deviceName: string | null;
+}
+
+/** Compact queue item used by Next Up and lyric prefetching. */
+export interface QueueTrack {
+  trackId: string;
+  title: string;
+  artists: string;
+  album: string | null;
+  albumArtUrl: string | null;
+  durationMs: number;
+  spotifyUrl: string | null;
+  isrc: string | null;
 }
 
 /** Auth/session status surfaced to the client. */
