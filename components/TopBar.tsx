@@ -15,6 +15,7 @@ export default function TopBar({
   nextTrack,
   controlPending,
   controlError,
+  controlsBlocked,
   onPlaybackCommand,
   visible,
   dimmed,
@@ -27,6 +28,7 @@ export default function TopBar({
   nextTrack: QueueTrack | null;
   controlPending: PlaybackCommand | null;
   controlError: string | null;
+  controlsBlocked: boolean;
   onPlaybackCommand: (command: PlaybackCommand) => void;
   visible: boolean;
   dimmed: boolean;
@@ -75,6 +77,9 @@ export default function TopBar({
       <PlaybackControls
         visible={visible}
         isPlaying={!!playback?.isPlaying}
+        capabilities={
+          controlsBlocked ? undefined : playback?.controlCapabilities
+        }
         pending={controlPending}
         error={controlError}
         onCommand={onPlaybackCommand}

@@ -1,5 +1,11 @@
 import { env } from "./env";
-import type { PlaybackState, CurrentlyPlayingType, QueueTrack } from "./types";
+import type {
+  PlaybackState,
+  CurrentlyPlayingType,
+  PlaybackCommand,
+  PlaybackControlCapabilities,
+  QueueTrack,
+} from "./types";
 import type { SessionData } from "./session";
 
 const TOKEN_URL = "https://accounts.spotify.com/api/token";
@@ -37,6 +43,20 @@ export class SpotifyNoActiveDeviceError extends Error {
   constructor(message = "No active Spotify device") {
     super(message);
     this.name = "SpotifyNoActiveDeviceError";
+  }
+}
+
+export class SpotifyPremiumRequiredError extends Error {
+  constructor(message = "Spotify Premium is required for playback controls") {
+    super(message);
+    this.name = "SpotifyPremiumRequiredError";
+  }
+}
+
+export class SpotifyInsufficientScopeError extends Error {
+  constructor(message = "Spotify playback-control permission is missing") {
+    super(message);
+    this.name = "SpotifyInsufficientScopeError";
   }
 }
 
@@ -176,7 +196,19 @@ interface SpotifyPlayerResponse {
   timestamp: number;
   currently_playing_type: string;
   item: SpotifyTrackItem | null;
-  device?: { name?: string } | null;
+  device?: {
+    id?: string | null;
+    name?: string;
+    is_restricted?: boolean;
+  } | null;
+  actions?: {
+    disallows?: {
+      pausing?: boolean;
+      resuming?: boolean;
+      skipping_next?: boolean;
+      skipping_prev?: boolean;
+    };
+  } | null;
 }
 
 interface SpotifyQueueResponse {
@@ -196,8 +228,35 @@ const IDLE: PlaybackState = {
   albumArtUrl: null,
   spotifyUrl: null,
   isrc: null,
+  deviceId: null,
   deviceName: null,
+  controlCapabilities: {
+    play: false,
+    pause: false,
+    next: false,
+    previous: false,
+  },
 };
+
+function getControlCapabilities(
+  data: SpotifyPlayerResponse,
+): PlaybackControlCapabilities {
+  if (
+    !data.device ||
+    data.device.is_restricted ||
+    data.currently_playing_type === "ad"
+  ) {
+    return { play: false, pause: false, next: false, previous: false };
+  }
+
+  const disallows = data.actions?.disallows;
+  return {
+    play: !disallows?.resuming,
+    pause: !disallows?.pausing,
+    next: !disallows?.skipping_next,
+    previous: !disallows?.skipping_prev,
+  };
+}
 
 function pickArt(images?: SpotifyImage[]): string | null {
   if (!images || images.length === 0) return null;
@@ -290,7 +349,9 @@ export async function fetchPlayback(accessToken: string): Promise<PlaybackState>
     albumArtUrl,
     spotifyUrl: item.external_urls?.spotify ?? null,
     isrc: item.external_ids?.isrc ?? null,
+    deviceId: data.device?.id ?? null,
     deviceName: data.device?.name ?? null,
+    controlCapabilities: getControlCapabilities(data),
   };
 }
 
@@ -325,12 +386,11 @@ export async function fetchQueue(accessToken: string): Promise<QueueTrack[]> {
     }));
 }
 
-export type PlaybackCommand = "play" | "pause" | "next" | "previous";
-
 /** Send a small, passenger-facing command to the currently active device. */
 export async function sendPlaybackCommand(
   accessToken: string,
   command: PlaybackCommand,
+  deviceId?: string,
 ): Promise<void> {
   const path: Record<PlaybackCommand, string> = {
     play: "play",
@@ -339,17 +399,23 @@ export async function sendPlaybackCommand(
     previous: "previous",
   };
   const method = command === "play" || command === "pause" ? "PUT" : "POST";
-  const res = await fetch(
-    `https://api.spotify.com/v1/me/player/${path[command]}`,
-    {
-      method,
-      headers: { Authorization: `Bearer ${accessToken}` },
-      cache: "no-store",
-    },
-  );
+  const url = new URL(`https://api.spotify.com/v1/me/player/${path[command]}`);
+  if (deviceId) url.searchParams.set("device_id", deviceId);
+  const res = await fetch(url, {
+    method,
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: "no-store",
+  });
 
   if (res.status === 401) throw new SpotifyAuthError();
-  if (res.status === 403) throw new SpotifyForbiddenError();
+  if (res.status === 403) {
+    const detail = await readSpotifyErrorMessage(res);
+    if (/premium/i.test(detail)) throw new SpotifyPremiumRequiredError();
+    if (/scope|permission/i.test(detail)) {
+      throw new SpotifyInsufficientScopeError();
+    }
+    throw new SpotifyForbiddenError(detail || undefined);
+  }
   if (res.status === 404) throw new SpotifyNoActiveDeviceError();
   if (res.status === 429) {
     const retry = Number(res.headers.get("Retry-After") ?? "5");
@@ -358,4 +424,12 @@ export async function sendPlaybackCommand(
   if (!res.ok) {
     throw new Error(`Spotify playback command error: ${res.status}`);
   }
+}
+
+async function readSpotifyErrorMessage(res: Response): Promise<string> {
+  const body = (await res.json().catch(() => null)) as {
+    error?: { message?: unknown } | string;
+  } | null;
+  if (typeof body?.error === "string") return body.error;
+  return typeof body?.error?.message === "string" ? body.error.message : "";
 }

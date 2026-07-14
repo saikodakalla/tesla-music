@@ -1,36 +1,58 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import type { PlaybackCommand, PlaybackState } from "@/lib/types";
 
-export type PlaybackCommand = "play" | "pause" | "next" | "previous";
+export type { PlaybackCommand } from "@/lib/types";
 
 export function usePlaybackControls({
-  trackId,
+  playback,
   onSuccess,
 }: {
-  trackId?: string | null;
+  playback: PlaybackState | null;
   onSuccess: () => void;
 }) {
   const [pending, setPending] = useState<PlaybackCommand | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [blocked, setBlocked] = useState(false);
 
-  useEffect(() => setError(null), [trackId]);
+  useEffect(() => setError(null), [playback?.trackId]);
+  useEffect(() => {
+    setError(null);
+    setBlocked(false);
+  }, [playback?.deviceId]);
 
   const send = useCallback(
     async (command: PlaybackCommand) => {
-      if (pending) return;
+      if (pending || !playback?.controlCapabilities[command]) return;
       setPending(command);
       setError(null);
       try {
         const res = await fetch("/api/playback/control", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ command }),
+          body: JSON.stringify({
+            command,
+            deviceId: playback.deviceId ?? undefined,
+          }),
         });
         if (!res.ok) {
           const body = (await res.json().catch(() => ({}))) as { error?: string };
-          if (res.status === 403) {
-            throw new Error("Log out and back in to enable passenger controls.");
+          if (res.status === 401 || body.error === "reauth_required") {
+            window.location.assign("/api/auth/login");
+            return;
+          }
+          if (body.error === "scope_missing") {
+            window.location.assign("/api/auth/login");
+            return;
+          }
+          if (body.error === "premium_required") {
+            setBlocked(true);
+            throw new Error("Spotify Premium is required for playback controls.");
+          }
+          if (body.error === "control_forbidden") {
+            setBlocked(true);
+            throw new Error("Spotify blocked controls on this device.");
           }
           if (body.error === "no_active_device") {
             throw new Error("Start Spotify on a device first.");
@@ -49,8 +71,8 @@ export function usePlaybackControls({
         setPending(null);
       }
     },
-    [onSuccess, pending],
+    [onSuccess, pending, playback],
   );
 
-  return { pending, error, send };
+  return { pending, error, blocked, send };
 }

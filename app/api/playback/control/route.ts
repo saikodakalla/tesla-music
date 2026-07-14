@@ -6,7 +6,9 @@ import {
   sendPlaybackCommand,
   SpotifyAuthError,
   SpotifyForbiddenError,
+  SpotifyInsufficientScopeError,
   SpotifyNoActiveDeviceError,
+  SpotifyPremiumRequiredError,
   SpotifyRateLimitError,
 } from "@/lib/spotify";
 
@@ -14,6 +16,7 @@ export const dynamic = "force-dynamic";
 
 const BodySchema = z.object({
   command: z.enum(["play", "pause", "next", "previous"]),
+  deviceId: z.string().min(1).max(200).optional(),
 });
 
 /** Session-gated playback command proxy. Tokens remain server-side. */
@@ -30,13 +33,21 @@ export async function POST(req: NextRequest) {
   try {
     let { session: fresh, changed } = await ensureFreshSession(session);
     try {
-      await sendPlaybackCommand(fresh.accessToken, parsed.data.command);
+      await sendPlaybackCommand(
+        fresh.accessToken,
+        parsed.data.command,
+        parsed.data.deviceId,
+      );
     } catch (error) {
       if (error instanceof SpotifyAuthError && !changed) {
         const refreshed = await ensureFreshSession({ ...fresh, expiresAt: 0 });
         fresh = refreshed.session;
         changed = true;
-        await sendPlaybackCommand(fresh.accessToken, parsed.data.command);
+        await sendPlaybackCommand(
+          fresh.accessToken,
+          parsed.data.command,
+          parsed.data.deviceId,
+        );
       } else {
         throw error;
       }
@@ -51,6 +62,15 @@ export async function POST(req: NextRequest) {
     if (error instanceof SpotifyForbiddenError) {
       return NextResponse.json(
         { error: "control_forbidden" },
+        { status: 403 },
+      );
+    }
+    if (error instanceof SpotifyInsufficientScopeError) {
+      return NextResponse.json({ error: "scope_missing" }, { status: 403 });
+    }
+    if (error instanceof SpotifyPremiumRequiredError) {
+      return NextResponse.json(
+        { error: "premium_required" },
         { status: 403 },
       );
     }

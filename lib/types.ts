@@ -41,6 +41,11 @@ export interface LyricsCandidate {
 
 export type CurrentlyPlayingType = "track" | "episode" | "ad" | "unknown";
 
+export type PlaybackCommand = "play" | "pause" | "next" | "previous";
+
+/** Commands Spotify says the active device can currently accept. */
+export type PlaybackControlCapabilities = Record<PlaybackCommand, boolean>;
+
 /**
  * Normalised playback snapshot returned by /api/playback.
  *
@@ -65,8 +70,12 @@ export interface PlaybackState {
   spotifyUrl: string | null;
   /** ISRC when available — a precise lyric-match key. */
   isrc: string | null;
+  /** Volatile Spotify Connect id for the active device. */
+  deviceId: string | null;
   /** Name of the active device (e.g. "Tesla", phone), informational. */
   deviceName: string | null;
+  /** False commands are not rendered because Spotify would reject them. */
+  controlCapabilities: PlaybackControlCapabilities;
 }
 
 /** Compact queue item used by Next Up and lyric prefetching. */
