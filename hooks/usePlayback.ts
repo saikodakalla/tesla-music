@@ -28,6 +28,8 @@ export interface UsePlaybackResult {
   status: PlaybackStatus;
   /** When status === "reconnecting", how long we've been failing (ms). */
   outageMs: number;
+  /** Poll immediately after a local playback command. */
+  refresh: () => void;
 }
 
 // Adaptive poll intervals (docs/06 §6.3).
@@ -198,5 +200,11 @@ export function usePlayback(
     };
   }, [poll]);
 
-  return { playback, anchor, status, outageMs };
+  return {
+    playback,
+    anchor,
+    status,
+    outageMs,
+    refresh: () => void poll(),
+  };
 }
