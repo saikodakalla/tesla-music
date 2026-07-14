@@ -42,7 +42,11 @@ export default function TopBar({
       }`}
     >
       {/* Now playing */}
-      <div className="pointer-events-auto flex min-w-0 items-center gap-4">
+      <div
+        className={`flex min-w-0 items-center gap-4 ${
+          visible ? "pointer-events-auto" : "pointer-events-none"
+        }`}
+      >
         {playback?.albumArtUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -77,7 +81,11 @@ export default function TopBar({
       />
 
       {/* Attribution + controls */}
-      <div className="pointer-events-auto flex items-center gap-2">
+      <div
+        className={`flex items-center gap-2 ${
+          visible ? "pointer-events-auto" : "pointer-events-none"
+        }`}
+      >
         {reconnecting && (
           <span className="mr-1 hidden text-sm text-amber-400/80 sm:inline">
             Reconnecting…

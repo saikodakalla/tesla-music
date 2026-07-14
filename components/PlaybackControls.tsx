@@ -18,8 +18,8 @@ export default function PlaybackControls({
   const disabled = !!pending;
   return (
     <div
-      className={`pointer-events-auto absolute left-1/2 top-4 hidden -translate-x-1/2 flex-col items-center md:flex ${
-        visible ? "" : "pointer-events-none"
+      className={`absolute left-1/2 top-4 hidden -translate-x-1/2 flex-col items-center md:flex ${
+        visible ? "pointer-events-auto" : "pointer-events-none"
       }`}
       aria-hidden={!visible}
     >
