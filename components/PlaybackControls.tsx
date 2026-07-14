@@ -1,20 +1,32 @@
 "use client";
 
-import type { PlaybackCommand } from "@/hooks/usePlaybackControls";
+import type {
+  PlaybackCommand,
+  PlaybackControlCapabilities,
+} from "@/lib/types";
 
 export default function PlaybackControls({
   visible,
   isPlaying,
+  capabilities,
   pending,
   error,
   onCommand,
 }: {
   visible: boolean;
   isPlaying: boolean;
+  capabilities?: PlaybackControlCapabilities;
   pending: PlaybackCommand | null;
   error: string | null;
   onCommand: (command: PlaybackCommand) => void;
 }) {
+  const toggleCommand: PlaybackCommand = isPlaying ? "pause" : "play";
+  const canToggle = !!capabilities?.[toggleCommand];
+  const canPrevious = !!capabilities?.previous;
+  const canNext = !!capabilities?.next;
+  const hasCommands = canToggle || canPrevious || canNext;
+  if (!hasCommands && !error) return null;
+
   const disabled = !!pending;
   return (
     <div
@@ -23,36 +35,44 @@ export default function PlaybackControls({
       }`}
       aria-hidden={!visible}
     >
-      <div className="flex items-center gap-2 rounded-2xl bg-ink-900/70 p-1 backdrop-blur">
-        <CommandButton
-          label="Previous track"
-          disabled={disabled}
-          onClick={() => onCommand("previous")}
-        >
-          <PreviousIcon />
-        </CommandButton>
-        <CommandButton
-          label={isPlaying ? "Pause" : "Play"}
-          disabled={disabled}
-          primary
-          onClick={() => onCommand(isPlaying ? "pause" : "play")}
-        >
-          {pending === "play" || pending === "pause" ? (
-            <LoadingIcon />
-          ) : isPlaying ? (
-            <PauseIcon />
-          ) : (
-            <PlayIcon />
+      {hasCommands && (
+        <div className="flex items-center gap-2 rounded-2xl bg-ink-900/70 p-1 backdrop-blur">
+          {canPrevious && (
+            <CommandButton
+              label="Previous track"
+              disabled={disabled}
+              onClick={() => onCommand("previous")}
+            >
+              <PreviousIcon />
+            </CommandButton>
           )}
-        </CommandButton>
-        <CommandButton
-          label="Next track"
-          disabled={disabled}
-          onClick={() => onCommand("next")}
-        >
-          <NextIcon />
-        </CommandButton>
-      </div>
+          {canToggle && (
+            <CommandButton
+              label={isPlaying ? "Pause" : "Play"}
+              disabled={disabled}
+              primary
+              onClick={() => onCommand(toggleCommand)}
+            >
+              {pending === "play" || pending === "pause" ? (
+                <LoadingIcon />
+              ) : isPlaying ? (
+                <PauseIcon />
+              ) : (
+                <PlayIcon />
+              )}
+            </CommandButton>
+          )}
+          {canNext && (
+            <CommandButton
+              label="Next track"
+              disabled={disabled}
+              onClick={() => onCommand("next")}
+            >
+              <NextIcon />
+            </CommandButton>
+          )}
+        </div>
+      )}
       {error && (
         <p
           className="mt-2 whitespace-nowrap rounded-full bg-amber-500/15 px-3 py-1 text-xs text-amber-300"

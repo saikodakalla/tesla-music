@@ -38,7 +38,7 @@ export default function Player({
     usePlayback(initialPlayback);
   const queue = useQueue(playback?.trackId);
   const playbackControls = usePlaybackControls({
-    trackId: playback?.trackId,
+    playback,
     onSuccess: refresh,
   });
 
@@ -176,6 +176,7 @@ export default function Player({
         nextTrack={queue[0] ?? null}
         controlPending={playbackControls.pending}
         controlError={playbackControls.error}
+        controlsBlocked={playbackControls.blocked}
         onPlaybackCommand={playbackControls.send}
         visible={uiVisible}
         dimmed={dimmed}
