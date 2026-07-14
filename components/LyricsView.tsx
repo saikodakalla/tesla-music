@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LyricLine } from "@/lib/types";
 import type { PlaybackAnchor } from "@/hooks/usePlayback";
 import type { LyricDisplayMode } from "@/hooks/useLyricTransform";
+import { detectLyricSections } from "@/lib/lyrics/structure";
 
 /**
  * Synced lyric view, styled after Spotify's full-screen lyrics (docs/08 §8.2).
@@ -30,6 +31,8 @@ export const LYRIC_LEAD_MS = 200;
 // How long to leave auto-scroll suspended after the user scrolls, before
 // snapping back to the active line.
 const RESUME_AFTER_MS = 5000;
+const LONG_GAP_MS = 8000;
+const HOLD_CURRENT_LINE_MS = 3500;
 
 function findActiveIndex(lines: LyricLine[], posMs: number): number {
   let lo = 0;
@@ -54,6 +57,7 @@ export default function LyricsView({
   accentLyrics = true,
   transformedLines = null,
   displayMode = "original",
+  showSongSections = true,
   onLineTap,
 }: {
   lines: LyricLine[];
@@ -65,12 +69,22 @@ export default function LyricsView({
   /** Optional line-index-aligned translation or romanization. */
   transformedLines?: string[] | null;
   displayMode?: LyricDisplayMode;
+  showSongSections?: boolean;
   /** Called with a line's index into `lines` when it's tapped. */
   onLineTap?: (index: number) => void;
 }) {
   const [activeIndex, setActiveIndex] = useState(-1);
-  const [inGap, setInGap] = useState(false);
+  const [gapSeconds, setGapSeconds] = useState<number | null>(null);
   const [userScrolling, setUserScrolling] = useState(false);
+  const sectionLabels = useMemo(() => {
+    if (!showSongSections) return new Map<number, string>();
+    return new Map(
+      detectLyricSections(lines).map((section) => [
+        section.startIndex,
+        section.label,
+      ]),
+    );
+  }, [lines, showSongSections]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const lineRefs = useRef<(HTMLParagraphElement | null)[]>([]);
@@ -113,14 +127,27 @@ export default function LyricsView({
         const idx = findActiveIndex(ls, pos);
         setActiveIndex((prev) => (prev === idx ? prev : idx));
 
-        let gap: boolean;
+        let nextGapSeconds: number | null = null;
         if (idx < 0) {
-          gap = ls[0].tMs - pos > 2500;
+          const remaining = ls[0].tMs - pos;
+          if (remaining > 2500) nextGapSeconds = Math.ceil(remaining / 1000);
         } else {
           const next = ls[idx + 1];
-          gap = ls[idx].text.trim() === "" && (!next || next.tMs - pos > 1200);
+          const fullGap = next ? next.tMs - ls[idx].tMs : 0;
+          const remaining = next ? next.tMs - pos : 0;
+          const lineHasCleared = pos - ls[idx].tMs >= HOLD_CURRENT_LINE_MS;
+          if (
+            next &&
+            remaining > 1200 &&
+            (ls[idx].text.trim() === "" ||
+              (fullGap >= LONG_GAP_MS && lineHasCleared))
+          ) {
+            nextGapSeconds = Math.ceil(remaining / 1000);
+          }
         }
-        setInGap((prev) => (prev === gap ? prev : gap));
+        setGapSeconds((prev) =>
+          prev === nextGapSeconds ? prev : nextGapSeconds,
+        );
       }
       raf = requestAnimationFrame(tick);
     };
@@ -200,6 +227,7 @@ export default function LyricsView({
             const isPast = activeIndex >= 0 && idx < activeIndex;
             const tappable = !!onLineTap && line.text.trim() !== "";
             const transformed = transformedLines?.[idx]?.trim() ?? "";
+            const sectionLabel = sectionLabels.get(idx);
             const showTransformed = displayMode !== "original" && !!transformed;
             const showOriginal = displayMode !== "transformed" || !showTransformed;
             return (
@@ -226,6 +254,11 @@ export default function LyricsView({
                   transition: "color 300ms ease",
                 }}
               >
+                {sectionLabel && (
+                  <span className="mb-2 block text-[0.27em] font-semibold uppercase tracking-[0.18em] opacity-55">
+                    {sectionLabel}
+                  </span>
+                )}
                 {showOriginal && <span dir="auto">{line.text || "♪"}</span>}
                 {showTransformed && (
                   <span
@@ -244,18 +277,15 @@ export default function LyricsView({
       </div>
 
       {/* Instrumental / intro gap affordance — pulsing dots at the anchor. */}
-      {inGap && !userScrolling && (
+      {gapSeconds !== null && !userScrolling && (
         <div
-          className="pointer-events-none absolute flex gap-3 px-[7vw]"
+          className="pointer-events-none absolute flex items-center gap-3 px-[7vw]"
           style={{ top: `${ACTIVE_Y_RATIO * 100}%`, transform: "translateY(-50%)" }}
         >
-          {[0, 1, 2].map((i) => (
-            <span
-              key={i}
-              className="gap-dot h-3.5 w-3.5 rounded-full bg-white/70"
-              style={{ animationDelay: `${i * 0.18}s` }}
-            />
-          ))}
+          <span className="text-sm font-semibold uppercase tracking-[0.16em] text-lyric-dim">
+            Next lyric in {gapSeconds}s
+          </span>
+          <span className="gap-dot h-2.5 w-2.5 rounded-full bg-white/70" />
         </div>
       )}
 
