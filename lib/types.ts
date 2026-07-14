@@ -69,6 +69,18 @@ export interface PlaybackState {
   deviceName: string | null;
 }
 
+/** Compact queue item used by Next Up and lyric prefetching. */
+export interface QueueTrack {
+  trackId: string;
+  title: string;
+  artists: string;
+  album: string | null;
+  albumArtUrl: string | null;
+  durationMs: number;
+  spotifyUrl: string | null;
+  isrc: string | null;
+}
+
 /** Auth/session status surfaced to the client. */
 export interface SessionStatus {
   authenticated: boolean;

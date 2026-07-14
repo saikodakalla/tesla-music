@@ -1,7 +1,7 @@
 "use client";
 
 import SpotifyMark from "./SpotifyMark";
-import type { PlaybackState } from "@/lib/types";
+import type { PlaybackState, QueueTrack } from "@/lib/types";
 
 /**
  * Slim, quiet top bar (docs/08 §8.2): album art, title/artist, the required
@@ -10,6 +10,7 @@ import type { PlaybackState } from "@/lib/types";
  */
 export default function TopBar({
   playback,
+  nextTrack,
   visible,
   dimmed,
   onToggleDim,
@@ -18,6 +19,7 @@ export default function TopBar({
   reconnecting,
 }: {
   playback: PlaybackState | null;
+  nextTrack: QueueTrack | null;
   visible: boolean;
   dimmed: boolean;
   onToggleDim: () => void;
@@ -50,6 +52,11 @@ export default function TopBar({
           <p className="truncate text-sm text-lyric-dim">
             {playback?.artists ?? "Waiting for Spotify…"}
           </p>
+          {nextTrack && (
+            <p className="mt-1 truncate text-xs text-lyric-faint">
+              Next: {nextTrack.title} · {nextTrack.artists}
+            </p>
+          )}
         </div>
       </div>
 

@@ -1,10 +1,11 @@
 import { env } from "./env";
-import type { PlaybackState, CurrentlyPlayingType } from "./types";
+import type { PlaybackState, CurrentlyPlayingType, QueueTrack } from "./types";
 import type { SessionData } from "./session";
 
 const TOKEN_URL = "https://accounts.spotify.com/api/token";
 const PLAYER_URL =
   "https://api.spotify.com/v1/me/player?additional_types=track,episode";
+const QUEUE_URL = "https://api.spotify.com/v1/me/player/queue";
 
 /** Thrown when the user must re-authenticate (refresh failed / token revoked). */
 export class SpotifyAuthError extends Error {
@@ -151,6 +152,7 @@ interface SpotifyArtist {
 }
 interface SpotifyTrackItem {
   id: string;
+  type?: string;
   name: string;
   duration_ms: number;
   artists?: SpotifyArtist[];
@@ -168,6 +170,10 @@ interface SpotifyPlayerResponse {
   currently_playing_type: string;
   item: SpotifyTrackItem | null;
   device?: { name?: string } | null;
+}
+
+interface SpotifyQueueResponse {
+  queue?: SpotifyTrackItem[];
 }
 
 const IDLE: PlaybackState = {
@@ -279,4 +285,35 @@ export async function fetchPlayback(accessToken: string): Promise<PlaybackState>
     isrc: item.external_ids?.isrc ?? null,
     deviceName: data.device?.name ?? null,
   };
+}
+
+/** Fetch a compact, track-only queue for the auto-hiding Next Up display. */
+export async function fetchQueue(accessToken: string): Promise<QueueTrack[]> {
+  const res = await fetch(QUEUE_URL, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: "no-store",
+  });
+
+  if (res.status === 401) throw new SpotifyAuthError();
+  if (res.status === 403) throw new SpotifyForbiddenError();
+  if (res.status === 429) {
+    const retry = Number(res.headers.get("Retry-After") ?? "5");
+    throw new SpotifyRateLimitError(Number.isFinite(retry) ? retry : 5);
+  }
+  if (!res.ok) throw new Error(`Spotify /me/player/queue error: ${res.status}`);
+
+  const data = (await res.json()) as SpotifyQueueResponse;
+  return (data.queue ?? [])
+    .filter((item) => item.type === "track" || !!item.artists?.length)
+    .slice(0, 5)
+    .map((item) => ({
+      trackId: item.id,
+      title: item.name,
+      artists: item.artists?.map((artist) => artist.name).join(", ") ?? "",
+      album: item.album?.name ?? null,
+      albumArtUrl: pickArt(item.album?.images),
+      durationMs: item.duration_ms,
+      spotifyUrl: item.external_urls?.spotify ?? null,
+      isrc: item.external_ids?.isrc ?? null,
+    }));
 }

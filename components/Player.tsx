@@ -9,6 +9,7 @@ import { useLyricSettings } from "@/hooks/useLyricSettings";
 import { useLyricOverride } from "@/hooks/useLyricOverride";
 import { useThemeSettings } from "@/hooks/useThemeSettings";
 import { useLyricExplanation } from "@/hooks/useLyricExplanation";
+import { useQueue } from "@/hooks/useQueue";
 import AmbientBackdrop from "./AmbientBackdrop";
 import ExplainSheet from "./ExplainSheet";
 import GradientMesh from "./GradientMesh";
@@ -32,6 +33,7 @@ export default function Player({
 }) {
   const router = useRouter();
   const { playback, anchor, status, outageMs } = usePlayback(initialPlayback);
+  const queue = useQueue(playback?.trackId);
 
   // Lyric display prefs (font size + sync nudge) and per-track manual override.
   const {
@@ -158,6 +160,7 @@ export default function Player({
 
       <TopBar
         playback={playback}
+        nextTrack={queue[0] ?? null}
         visible={uiVisible}
         dimmed={dimmed}
         onToggleDim={() => {
