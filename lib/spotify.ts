@@ -33,6 +33,13 @@ export class SpotifyRateLimitError extends Error {
   }
 }
 
+export class SpotifyNoActiveDeviceError extends Error {
+  constructor(message = "No active Spotify device") {
+    super(message);
+    this.name = "SpotifyNoActiveDeviceError";
+  }
+}
+
 interface SpotifyTokenResponse {
   access_token: string;
   token_type: string;
@@ -316,4 +323,39 @@ export async function fetchQueue(accessToken: string): Promise<QueueTrack[]> {
       spotifyUrl: item.external_urls?.spotify ?? null,
       isrc: item.external_ids?.isrc ?? null,
     }));
+}
+
+export type PlaybackCommand = "play" | "pause" | "next" | "previous";
+
+/** Send a small, passenger-facing command to the currently active device. */
+export async function sendPlaybackCommand(
+  accessToken: string,
+  command: PlaybackCommand,
+): Promise<void> {
+  const path: Record<PlaybackCommand, string> = {
+    play: "play",
+    pause: "pause",
+    next: "next",
+    previous: "previous",
+  };
+  const method = command === "play" || command === "pause" ? "PUT" : "POST";
+  const res = await fetch(
+    `https://api.spotify.com/v1/me/player/${path[command]}`,
+    {
+      method,
+      headers: { Authorization: `Bearer ${accessToken}` },
+      cache: "no-store",
+    },
+  );
+
+  if (res.status === 401) throw new SpotifyAuthError();
+  if (res.status === 403) throw new SpotifyForbiddenError();
+  if (res.status === 404) throw new SpotifyNoActiveDeviceError();
+  if (res.status === 429) {
+    const retry = Number(res.headers.get("Retry-After") ?? "5");
+    throw new SpotifyRateLimitError(Number.isFinite(retry) ? retry : 5);
+  }
+  if (!res.ok) {
+    throw new Error(`Spotify playback command error: ${res.status}`);
+  }
 }

@@ -11,6 +11,7 @@ import { useThemeSettings } from "@/hooks/useThemeSettings";
 import { useLyricExplanation } from "@/hooks/useLyricExplanation";
 import { useQueue } from "@/hooks/useQueue";
 import { useLyricTransform } from "@/hooks/useLyricTransform";
+import { usePlaybackControls } from "@/hooks/usePlaybackControls";
 import AmbientBackdrop from "./AmbientBackdrop";
 import ExplainSheet from "./ExplainSheet";
 import GradientMesh from "./GradientMesh";
@@ -33,8 +34,13 @@ export default function Player({
   initialLyrics?: LyricsDoc | null;
 }) {
   const router = useRouter();
-  const { playback, anchor, status, outageMs } = usePlayback(initialPlayback);
+  const { playback, anchor, status, outageMs, refresh } =
+    usePlayback(initialPlayback);
   const queue = useQueue(playback?.trackId);
+  const playbackControls = usePlaybackControls({
+    trackId: playback?.trackId,
+    onSuccess: refresh,
+  });
 
   // Lyric display prefs (font size + sync nudge) and per-track manual override.
   const {
@@ -168,6 +174,9 @@ export default function Player({
       <TopBar
         playback={playback}
         nextTrack={queue[0] ?? null}
+        controlPending={playbackControls.pending}
+        controlError={playbackControls.error}
+        onPlaybackCommand={playbackControls.send}
         visible={uiVisible}
         dimmed={dimmed}
         onToggleDim={() => {
@@ -196,6 +205,7 @@ export default function Player({
           accentLyrics={theme.accentLyrics}
           transformedLines={language.transformedLines}
           lyricDisplayMode={language.displayMode}
+          showSongSections={theme.showSongSections}
           lastArtUrl={lastArtRef.current}
           onLineTap={handleLineTap}
         />
@@ -222,6 +232,8 @@ export default function Player({
         setAccentLyrics={theme.setAccentLyrics}
         ambientMotion={theme.ambientMotion}
         setAmbientMotion={theme.setAmbientMotion}
+        showSongSections={theme.showSongSections}
+        setShowSongSections={theme.setShowSongSections}
         canCalibrate={canCalibrate}
         onStartCalibration={() => {
           setSettingsOpen(false);
@@ -277,6 +289,7 @@ function CenterContent({
   accentLyrics,
   transformedLines,
   lyricDisplayMode,
+  showSongSections,
   lastArtUrl,
   onLineTap,
 }: {
@@ -289,6 +302,7 @@ function CenterContent({
   accentLyrics: boolean;
   transformedLines: string[] | null;
   lyricDisplayMode: ReturnType<typeof useLyricTransform>["displayMode"];
+  showSongSections: boolean;
   lastArtUrl: string | null;
   onLineTap: (index: number) => void;
 }) {
@@ -351,6 +365,7 @@ function CenterContent({
         accentLyrics={accentLyrics}
         transformedLines={transformedLines}
         displayMode={lyricDisplayMode}
+        showSongSections={showSongSections}
         onLineTap={onLineTap}
       />
     );

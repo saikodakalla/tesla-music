@@ -23,6 +23,8 @@ That's the closest feasible thing to the original request, and it works well.
 - ⏱️ **Tight sync** via poll + client-side interpolation: the server polls Spotify, latency-corrects using Spotify's own `timestamp`, and a `requestAnimationFrame` clock advances the highlight smoothly between polls.
 - ⏭️ **Instant Next Up**: the auto-hiding top bar shows the next queued track and prefetches lyrics for the first two upcoming songs.
 - 🌐 **Dual-language lyrics**: explicitly generate a translation or romanization, then view the original, transformed text, or both in sync.
+- ⏯️ **Passenger controls**: large, auto-hiding previous, play/pause, and next controls target the active Spotify device.
+- 🧭 **Song structure**: locally detected verse, chorus, bridge, and outro labels plus a countdown through long instrumental gaps.
 - 🌙 **Tesla-first UI**: near-black night theme, huge fluid type (`clamp()` scales 1920×1200 → 2560×1600 → Cybertruck), GPU-composited scroll, auto-hiding chrome, ≥64px touch targets, fullscreen-friendly.
 - 🔒 **Secure auth**: Authorization Code **+ PKCE**, token exchange/refresh done server-side, tokens sealed in an **encrypted httpOnly cookie** — never readable by browser JS.
 - 🧊 **Calm edge cases**: no-lyrics, instrumental, plain (unsynced) lyrics, paused, nothing playing, ad, podcast, token refresh, rate-limits, and network outages all degrade gracefully — never a blank screen or a stack trace.
