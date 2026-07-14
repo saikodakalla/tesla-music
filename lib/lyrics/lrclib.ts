@@ -116,6 +116,7 @@ export class LrclibProvider implements LyricsProvider {
     if (record.instrumental) {
       return {
         source: this.name,
+        providerId: String(record.id),
         trackKey: key,
         durationMs,
         synced: false,
@@ -130,6 +131,7 @@ export class LrclibProvider implements LyricsProvider {
       if (lines.length > 0) {
         return {
           source: this.name,
+          providerId: String(record.id),
           trackKey: key,
           durationMs,
           synced: true,
@@ -144,6 +146,7 @@ export class LrclibProvider implements LyricsProvider {
     if (record.plainLyrics && record.plainLyrics.trim()) {
       return {
         source: this.name,
+        providerId: String(record.id),
         trackKey: key,
         durationMs,
         synced: false,

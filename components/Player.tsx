@@ -200,6 +200,7 @@ export default function Player({
         trackSyncOffsetMs={trackSyncOffsetMs}
         setTrackSyncOffsetMs={setTrackSyncOffsetMs}
         overrideId={overrideId}
+        activeLyricsId={lyrics?.providerId ?? null}
         setOverride={setOverride}
         clearOverride={clearOverride}
         backdrop={theme.backdrop}
