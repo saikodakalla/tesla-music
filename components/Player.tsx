@@ -10,6 +10,7 @@ import { useLyricOverride } from "@/hooks/useLyricOverride";
 import { useThemeSettings } from "@/hooks/useThemeSettings";
 import { useLyricExplanation } from "@/hooks/useLyricExplanation";
 import { useQueue } from "@/hooks/useQueue";
+import { useLyricTransform } from "@/hooks/useLyricTransform";
 import AmbientBackdrop from "./AmbientBackdrop";
 import ExplainSheet from "./ExplainSheet";
 import GradientMesh from "./GradientMesh";
@@ -49,6 +50,12 @@ export default function Player({
     playback?.trackId,
   );
   const { lyrics, loading } = useLyrics(playback, initialLyrics, overrideId);
+  const language = useLyricTransform({
+    trackKey: lyrics?.synced ? lyrics.trackKey : null,
+    title: playback?.title,
+    artist: playback?.artists,
+    lines: lyrics?.synced ? lyrics.lines : null,
+  });
 
   // Album-art-derived accent + palette for the ambient theme, and the look
   // preferences that decide how they're used.
@@ -187,6 +194,8 @@ export default function Player({
           loading={loading}
           syncOffsetMs={syncOffsetMs}
           accentLyrics={theme.accentLyrics}
+          transformedLines={language.transformedLines}
+          lyricDisplayMode={language.displayMode}
           lastArtUrl={lastArtRef.current}
           onLineTap={handleLineTap}
         />
@@ -206,6 +215,7 @@ export default function Player({
         activeLyricsId={lyrics?.providerId ?? null}
         setOverride={setOverride}
         clearOverride={clearOverride}
+        language={language}
         backdrop={theme.backdrop}
         setBackdrop={theme.setBackdrop}
         accentLyrics={theme.accentLyrics}
@@ -265,6 +275,8 @@ function CenterContent({
   loading,
   syncOffsetMs,
   accentLyrics,
+  transformedLines,
+  lyricDisplayMode,
   lastArtUrl,
   onLineTap,
 }: {
@@ -275,6 +287,8 @@ function CenterContent({
   loading: boolean;
   syncOffsetMs: number;
   accentLyrics: boolean;
+  transformedLines: string[] | null;
+  lyricDisplayMode: ReturnType<typeof useLyricTransform>["displayMode"];
   lastArtUrl: string | null;
   onLineTap: (index: number) => void;
 }) {
@@ -335,6 +349,8 @@ function CenterContent({
         anchor={anchor}
         syncOffsetMs={syncOffsetMs}
         accentLyrics={accentLyrics}
+        transformedLines={transformedLines}
+        displayMode={lyricDisplayMode}
         onLineTap={onLineTap}
       />
     );

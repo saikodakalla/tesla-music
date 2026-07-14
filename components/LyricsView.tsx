@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { LyricLine } from "@/lib/types";
 import type { PlaybackAnchor } from "@/hooks/usePlayback";
+import type { LyricDisplayMode } from "@/hooks/useLyricTransform";
 
 /**
  * Synced lyric view, styled after Spotify's full-screen lyrics (docs/08 §8.2).
@@ -51,6 +52,8 @@ export default function LyricsView({
   anchor,
   syncOffsetMs = 0,
   accentLyrics = true,
+  transformedLines = null,
+  displayMode = "original",
   onLineTap,
 }: {
   lines: LyricLine[];
@@ -59,6 +62,9 @@ export default function LyricsView({
   syncOffsetMs?: number;
   /** Tint the active line with the album accent (vs. plain white). */
   accentLyrics?: boolean;
+  /** Optional line-index-aligned translation or romanization. */
+  transformedLines?: string[] | null;
+  displayMode?: LyricDisplayMode;
   /** Called with a line's index into `lines` when it's tapped. */
   onLineTap?: (index: number) => void;
 }) {
@@ -193,6 +199,9 @@ export default function LyricsView({
             const isActive = idx === activeIndex;
             const isPast = activeIndex >= 0 && idx < activeIndex;
             const tappable = !!onLineTap && line.text.trim() !== "";
+            const transformed = transformedLines?.[idx]?.trim() ?? "";
+            const showTransformed = displayMode !== "original" && !!transformed;
+            const showOriginal = displayMode !== "transformed" || !showTransformed;
             return (
               <p
                 key={idx}
@@ -217,7 +226,17 @@ export default function LyricsView({
                   transition: "color 300ms ease",
                 }}
               >
-                {line.text || "♪"}
+                {showOriginal && <span dir="auto">{line.text || "♪"}</span>}
+                {showTransformed && (
+                  <span
+                    dir="auto"
+                    className={`block text-[0.58em] font-semibold leading-[1.3] opacity-75 ${
+                      showOriginal ? "mt-2" : ""
+                    }`}
+                  >
+                    {transformed}
+                  </span>
+                )}
               </p>
             );
           })}

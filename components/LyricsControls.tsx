@@ -14,6 +14,10 @@ import {
   BACKDROP_OPTIONS,
   type BackdropStyle,
 } from "@/hooks/useThemeSettings";
+import {
+  LANGUAGE_OPTIONS,
+  type UseLyricTransformResult,
+} from "@/hooks/useLyricTransform";
 
 /**
  * The lyric-accuracy panel (docs/16): font-size (A−/A+), manual sync-offset
@@ -35,6 +39,7 @@ export default function LyricsControls({
   activeLyricsId,
   setOverride,
   clearOverride,
+  language,
   backdrop,
   setBackdrop,
   accentLyrics,
@@ -57,6 +62,7 @@ export default function LyricsControls({
   activeLyricsId: string | null;
   setOverride: (trackId: string, recordId: string) => void;
   clearOverride: (trackId: string) => void;
+  language: UseLyricTransformResult;
   backdrop: BackdropStyle;
   setBackdrop: (v: BackdropStyle) => void;
   accentLyrics: boolean;
@@ -77,7 +83,7 @@ export default function LyricsControls({
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"
       />
 
-      <section className="relative w-full max-w-3xl rounded-t-3xl border-t border-white/10 bg-ink-900/95 p-6 pb-8 shadow-2xl">
+      <section className="relative max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-t-3xl border-t border-white/10 bg-ink-900/95 p-6 pb-8 shadow-2xl">
         <div className="mb-5 flex items-center justify-between">
           <h2 className="text-xl font-semibold text-lyric-active">
             Lyrics settings
@@ -138,6 +144,8 @@ export default function LyricsControls({
           setAmbientMotion={setAmbientMotion}
         />
 
+        <LanguageSection language={language} />
+
         <FixLyricsRow
           playback={playback}
           overrideId={overrideId}
@@ -146,6 +154,88 @@ export default function LyricsControls({
           clearOverride={clearOverride}
         />
       </section>
+    </div>
+  );
+}
+
+/* ----------------------------- Language ----------------------------- */
+
+function LanguageSection({
+  language,
+}: {
+  language: UseLyricTransformResult;
+}) {
+  const actionLabel =
+    language.kind === "translation" ? "Generate translation" : "Generate romanization";
+
+  return (
+    <div className="mt-2 border-t border-white/8 pt-2">
+      <Row label="Language mode" hint="Generated only when you request it.">
+        <Segmented
+          value={language.kind}
+          options={[
+            { value: "translation", label: "Translate" },
+            { value: "romanization", label: "Romanize" },
+          ]}
+          onChange={language.setKind}
+        />
+      </Row>
+
+      {language.kind === "translation" && (
+        <Row label="Translate to">
+          <select
+            value={language.targetLanguage}
+            onChange={(event) => language.setTargetLanguage(event.target.value)}
+            className="h-12 rounded-full border border-white/10 bg-ink-800 px-5 text-sm font-semibold text-lyric-active outline-none focus:ring-2"
+            style={{ ["--tw-ring-color" as string]: "var(--accent)" }}
+          >
+            {LANGUAGE_OPTIONS.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </Row>
+      )}
+
+      <Row label="Display">
+        <Segmented
+          value={language.displayMode}
+          options={[
+            { value: "original", label: "Original" },
+            { value: "both", label: "Both" },
+            { value: "transformed", label: "New text" },
+          ]}
+          onChange={language.setDisplayMode}
+        />
+      </Row>
+
+      <div className="flex items-center justify-between gap-4 py-4">
+        <div>
+          <p className="text-base font-medium text-lyric-active">{actionLabel}</p>
+          <p className="text-sm text-lyric-dim">
+            AI-generated text may be inaccurate. The result is cached temporarily.
+          </p>
+          {language.status === "error" && (
+            <p className="mt-1 text-sm text-amber-300" role="status">
+              Could not transform these lyrics. Try again.
+            </p>
+          )}
+          {language.status === "success" && (
+            <p className="mt-1 text-sm text-lyric-dim" role="status">
+              Ready. Choose Both or New text to display it.
+            </p>
+          )}
+        </div>
+        <button
+          onClick={language.generate}
+          disabled={!language.canTransform || language.status === "loading"}
+          className="h-12 shrink-0 rounded-full px-5 text-sm font-semibold text-black disabled:opacity-35 active:scale-95"
+          style={{ background: "var(--accent)" }}
+        >
+          {language.status === "loading" ? "Generating…" : "Generate"}
+        </button>
+      </div>
     </div>
   );
 }
