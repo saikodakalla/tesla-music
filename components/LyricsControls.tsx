@@ -27,8 +27,10 @@ export default function LyricsControls({
   playback,
   fontScale,
   setFontScale,
-  syncOffsetMs,
-  setSyncOffsetMs,
+  globalSyncOffsetMs,
+  setGlobalSyncOffsetMs,
+  trackSyncOffsetMs,
+  setTrackSyncOffsetMs,
   overrideId,
   setOverride,
   clearOverride,
@@ -46,8 +48,10 @@ export default function LyricsControls({
   playback: PlaybackState | null;
   fontScale: number;
   setFontScale: (v: number) => void;
-  syncOffsetMs: number;
-  setSyncOffsetMs: (v: number) => void;
+  globalSyncOffsetMs: number;
+  setGlobalSyncOffsetMs: (v: number) => void;
+  trackSyncOffsetMs: number;
+  setTrackSyncOffsetMs: (v: number) => void;
   overrideId: string | null;
   setOverride: (trackId: string, recordId: string) => void;
   clearOverride: (trackId: string) => void;
@@ -88,8 +92,22 @@ export default function LyricsControls({
         <FontSizeRow fontScale={fontScale} setFontScale={setFontScale} />
 
         <SyncOffsetRow
-          syncOffsetMs={syncOffsetMs}
-          setSyncOffsetMs={setSyncOffsetMs}
+          label="Device delay"
+          hint="Applies to every song on this display."
+          syncOffsetMs={globalSyncOffsetMs}
+          setSyncOffsetMs={setGlobalSyncOffsetMs}
+        />
+
+        <SyncOffsetRow
+          label="This song"
+          hint={
+            playback?.trackId
+              ? "Remembered whenever this exact track plays."
+              : "Start a song to save its timing."
+          }
+          syncOffsetMs={trackSyncOffsetMs}
+          setSyncOffsetMs={setTrackSyncOffsetMs}
+          disabled={!playback?.trackId}
         />
 
         <Row
@@ -158,37 +176,43 @@ function FontSizeRow({
 /* ----------------------------- Sync offset ----------------------------- */
 
 function SyncOffsetRow({
+  label,
+  hint,
   syncOffsetMs,
   setSyncOffsetMs,
+  disabled = false,
 }: {
+  label: string;
+  hint: string;
   syncOffsetMs: number;
   setSyncOffsetMs: (v: number) => void;
+  disabled?: boolean;
 }) {
   const sign = syncOffsetMs > 0 ? "+" : "";
   return (
     <Row
-      label="Sync offset"
-      hint={
+      label={label}
+      hint={`${hint}${
         syncOffsetMs === 0
-          ? "Lyrics in sync"
+          ? ""
           : syncOffsetMs > 0
-          ? "Lyrics shown earlier"
-          : "Lyrics shown later"
-      }
+          ? " Lyrics shown earlier."
+          : " Lyrics shown later."
+      }`}
     >
       <div className="flex items-center gap-3">
         <Stepper
           onDec={() => setSyncOffsetMs(syncOffsetMs - OFFSET_STEP)}
           onInc={() => setSyncOffsetMs(syncOffsetMs + OFFSET_STEP)}
-          decDisabled={syncOffsetMs <= OFFSET_MIN}
-          incDisabled={syncOffsetMs >= OFFSET_MAX}
+          decDisabled={disabled || syncOffsetMs <= OFFSET_MIN}
+          incDisabled={disabled || syncOffsetMs >= OFFSET_MAX}
           decLabel="Earlier"
           incLabel="Later"
           decContent={<span className="text-2xl font-bold">−</span>}
           incContent={<span className="text-2xl font-bold">+</span>}
           value={`${sign}${syncOffsetMs} ms`}
         />
-        {syncOffsetMs !== 0 && (
+        {!disabled && syncOffsetMs !== 0 && (
           <button
             onClick={() => setSyncOffsetMs(0)}
             className="h-12 rounded-full px-4 text-sm font-semibold text-lyric-dim active:scale-95"

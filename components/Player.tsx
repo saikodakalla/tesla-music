@@ -34,8 +34,15 @@ export default function Player({
   const { playback, anchor, status, outageMs } = usePlayback(initialPlayback);
 
   // Lyric display prefs (font size + sync nudge) and per-track manual override.
-  const { fontScale, setFontScale, syncOffsetMs, setSyncOffsetMs } =
-    useLyricSettings();
+  const {
+    fontScale,
+    setFontScale,
+    syncOffsetMs,
+    globalSyncOffsetMs,
+    setGlobalSyncOffsetMs,
+    trackSyncOffsetMs,
+    setTrackSyncOffsetMs,
+  } = useLyricSettings(playback?.trackId);
   const { overrideId, setOverride, clearOverride } = useLyricOverride(
     playback?.trackId,
   );
@@ -188,8 +195,10 @@ export default function Player({
         playback={playback}
         fontScale={fontScale}
         setFontScale={setFontScale}
-        syncOffsetMs={syncOffsetMs}
-        setSyncOffsetMs={setSyncOffsetMs}
+        globalSyncOffsetMs={globalSyncOffsetMs}
+        setGlobalSyncOffsetMs={setGlobalSyncOffsetMs}
+        trackSyncOffsetMs={trackSyncOffsetMs}
+        setTrackSyncOffsetMs={setTrackSyncOffsetMs}
         overrideId={overrideId}
         setOverride={setOverride}
         clearOverride={clearOverride}
@@ -211,7 +220,7 @@ export default function Player({
           lines={lyrics.lines}
           anchor={anchor}
           onApply={(off) => {
-            setSyncOffsetMs(off);
+            setTrackSyncOffsetMs(off - globalSyncOffsetMs);
             setCalibrating(false);
           }}
           onCancel={() => setCalibrating(false)}
