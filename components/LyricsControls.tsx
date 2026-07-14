@@ -32,6 +32,7 @@ export default function LyricsControls({
   trackSyncOffsetMs,
   setTrackSyncOffsetMs,
   overrideId,
+  activeLyricsId,
   setOverride,
   clearOverride,
   backdrop,
@@ -53,6 +54,7 @@ export default function LyricsControls({
   trackSyncOffsetMs: number;
   setTrackSyncOffsetMs: (v: number) => void;
   overrideId: string | null;
+  activeLyricsId: string | null;
   setOverride: (trackId: string, recordId: string) => void;
   clearOverride: (trackId: string) => void;
   backdrop: BackdropStyle;
@@ -139,6 +141,7 @@ export default function LyricsControls({
         <FixLyricsRow
           playback={playback}
           overrideId={overrideId}
+          activeLyricsId={activeLyricsId}
           setOverride={setOverride}
           clearOverride={clearOverride}
         />
@@ -230,11 +233,13 @@ function SyncOffsetRow({
 function FixLyricsRow({
   playback,
   overrideId,
+  activeLyricsId,
   setOverride,
   clearOverride,
 }: {
   playback: PlaybackState | null;
   overrideId: string | null;
+  activeLyricsId: string | null;
   setOverride: (trackId: string, recordId: string) => void;
   clearOverride: (trackId: string) => void;
 }) {
@@ -244,6 +249,13 @@ function FixLyricsRow({
   const [results, setResults] = useState<LyricsCandidate[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
+  const [quickLoading, setQuickLoading] = useState(false);
+  const [quickStatus, setQuickStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    setResults(null);
+    setQuickStatus(null);
+  }, [trackId]);
 
   // Prefill the query with the current track when the search opens.
   useEffect(() => {
@@ -274,6 +286,55 @@ function FixLyricsRow({
     }
   }, [term]);
 
+  const tryAnother = useCallback(async () => {
+    if (!trackId || !playback?.title || !playback.artists) return;
+    setQuickLoading(true);
+    setQuickStatus(null);
+    try {
+      let candidates = results;
+      if (!candidates) {
+        const q = `${playback.title} ${playback.artists}`;
+        const res = await fetch(
+          `/api/lyrics/search?q=${encodeURIComponent(q)}`,
+          { cache: "no-store" },
+        );
+        if (!res.ok) throw new Error(String(res.status));
+        const data = (await res.json()) as { candidates: LyricsCandidate[] };
+        candidates = data.candidates ?? [];
+        setResults(candidates);
+      }
+
+      const targetSec = playback.durationMs / 1000;
+      const ranked = [...candidates].sort((a, b) => {
+        if (a.hasSynced !== b.hasSynced) return a.hasSynced ? -1 : 1;
+        const aDelta =
+          a.durationSec == null ? Number.MAX_SAFE_INTEGER : Math.abs(a.durationSec - targetSec);
+        const bDelta =
+          b.durationSec == null ? Number.MAX_SAFE_INTEGER : Math.abs(b.durationSec - targetSec);
+        return aDelta - bDelta;
+      });
+
+      const currentId = overrideId ?? activeLyricsId;
+      const currentIndex = ranked.findIndex((candidate) => candidate.id === currentId);
+      const next = ranked.find(
+        (candidate, index) =>
+          candidate.id !== currentId && (currentIndex < 0 || index > currentIndex),
+      ) ?? ranked.find((candidate) => candidate.id !== currentId);
+
+      if (!next) {
+        setQuickStatus("No other matches found.");
+        return;
+      }
+
+      setOverride(trackId, next.id);
+      setQuickStatus(`Trying ${next.trackName} by ${next.artistName}.`);
+    } catch {
+      setQuickStatus("Could not load another match.");
+    } finally {
+      setQuickLoading(false);
+    }
+  }, [activeLyricsId, overrideId, playback, results, setOverride, trackId]);
+
   if (!trackId) {
     return (
       <Row label="Fix lyrics">
@@ -295,7 +356,15 @@ function FixLyricsRow({
               : "Wrong words or timing? Pick the right match."}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <button
+            onClick={() => void tryAnother()}
+            disabled={quickLoading}
+            className="h-12 rounded-full px-5 text-sm font-semibold text-black disabled:opacity-40 active:scale-95"
+            style={{ background: "var(--accent)" }}
+          >
+            {quickLoading ? "Finding…" : "Try another"}
+          </button>
           {overrideId && (
             <button
               onClick={() => clearOverride(trackId)}
@@ -312,6 +381,12 @@ function FixLyricsRow({
           </button>
         </div>
       </div>
+
+      {quickStatus && (
+        <p className="mb-3 text-sm text-lyric-dim" role="status">
+          {quickStatus}
+        </p>
+      )}
 
       {openSearch && (
         <div>
