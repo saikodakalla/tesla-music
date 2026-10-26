@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { normalizeTitle, titleSimilarity } from "@/lib/lyrics/match";
 import type { LyricsCandidate, PlaybackState } from "@/lib/types";
 import {
   FONT_MAX,
@@ -40,6 +41,10 @@ export default function LyricsControls({
   setOverride,
   clearOverride,
   language,
+  onRetryLyrics,
+  onEditLyrics,
+  hasCustomLyrics,
+  onClearCustomLyrics,
   backdrop,
   setBackdrop,
   accentLyrics,
@@ -65,6 +70,10 @@ export default function LyricsControls({
   setOverride: (trackId: string, recordId: string) => void;
   clearOverride: (trackId: string) => void;
   language: UseLyricTransformResult;
+  onRetryLyrics: () => void;
+  onEditLyrics: () => void;
+  hasCustomLyrics: boolean;
+  onClearCustomLyrics: () => void;
   backdrop: BackdropStyle;
   setBackdrop: (v: BackdropStyle) => void;
   accentLyrics: boolean;
@@ -151,6 +160,14 @@ export default function LyricsControls({
         />
 
         <LanguageSection language={language} />
+
+        <Row label="Missing lyrics or timing?" hint={hasCustomLyrics ? "Using your saved lyrics on this browser." : "Retry sources, import LRC, or tap to time plain lyrics."}>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={onRetryLyrics} className="min-h-16 rounded-full bg-white/10 px-5">Retry lookup</button>
+            <button onClick={onEditLyrics} className="min-h-16 rounded-full bg-white/10 px-5">Add or time lyrics</button>
+            {hasCustomLyrics && <button onClick={onClearCustomLyrics} className="min-h-16 rounded-full bg-white/10 px-5">Use online lyrics</button>}
+          </div>
+        </Row>
 
         <FixLyricsRow
           playback={playback}
@@ -357,7 +374,7 @@ function FixLyricsRow({
   useEffect(() => {
     if (openSearch && playback) {
       setTerm(
-        [playback.title, playback.artists].filter(Boolean).join(" ").trim(),
+        normalizeTitle(playback.title ?? ""),
       );
     }
   }, [openSearch, playback]);
@@ -389,7 +406,7 @@ function FixLyricsRow({
     try {
       let candidates = results;
       if (!candidates) {
-        const q = `${playback.title} ${playback.artists}`;
+        const q = normalizeTitle(playback.title);
         const res = await fetch(
           `/api/lyrics/search?q=${encodeURIComponent(q)}`,
           { cache: "no-store" },
@@ -401,7 +418,10 @@ function FixLyricsRow({
       }
 
       const targetSec = playback.durationMs / 1000;
-      const ranked = [...candidates].sort((a, b) => {
+      const ranked = candidates.filter((candidate) =>
+        !candidate.instrumental && titleSimilarity(playback.title!, candidate.trackName) >= 0.72 &&
+        (candidate.durationSec == null || Math.abs(candidate.durationSec - targetSec) <= 10),
+      ).sort((a, b) => {
         if (a.hasSynced !== b.hasSynced) return a.hasSynced ? -1 : 1;
         const aDelta =
           a.durationSec == null ? Number.MAX_SAFE_INTEGER : Math.abs(a.durationSec - targetSec);

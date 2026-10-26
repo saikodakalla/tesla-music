@@ -110,6 +110,42 @@ Using a custom domain? Add it in Vercel, then update both `SPOTIFY_REDIRECT_URI`
 
 ---
 
+## Telugu songs and missing timings
+
+Automatic lookup checks the original Spotify metadata, cleaned film-song titles,
+primary and alternate artist credits, title-only results, and Telugu-to-Roman
+search variants. It keeps looking for synchronized records when an exact match
+only has plain text. Candidate titles, versions and recording lengths are checked
+before using their timestamps. LRCLIB supplies synchronized lyrics; lyrics.ovh is
+a second source for plain text when LRCLIB has no usable result.
+
+If only text exists, it stays readable and translation/romanization is available
+in Lyrics settings. Text from the fallback source is clearly marked **Not synced**.
+No timestamps are invented. Provider outages are shown separately from confirmed
+missing results. **Retry lyrics** bypasses cached misses; negative results expire
+after 30 seconds and plain results are rechecked after five minutes.
+
+For recordings without published timestamps:
+
+1. Open **Add or time lyrics** (also in Lyrics settings).
+2. Paste Telugu or romanized text, or import a UTF-8 `.lrc` / `.txt` file.
+3. Save an LRC file directly, or choose **Time these lyrics**, start the song
+   from the beginning in Spotify, and tap each displayed line as it begins.
+4. Undo accidental taps if needed, then **Save synced lyrics** after all lines
+   are timed. **Use online lyrics** removes the local override.
+
+Custom lyrics are remembered for that Spotify track on the current browser
+(up to 40 recordings). They do not transfer between devices and disappear if
+browser storage is cleared. Imported LRC timestamps must fit the current recording.
+Published timing availability and source uptime vary; audio plays in the native
+Spotify app, so the companion cannot automatically align unpublished lyrics
+against audio it cannot access.
+
+Run `npm test` for matching, source fallback, LRC, storage expiry and custom timing
+regressions. `npm run lint` and `npm run build` validate the application.
+
+---
+
 ## Using it in the Tesla
 
 1. Make sure your Tesla's Spotify account email is **added to the app's 5-user allow-list** (above).

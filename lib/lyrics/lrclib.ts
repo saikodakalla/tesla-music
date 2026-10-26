@@ -2,7 +2,8 @@ import { env } from "../env";
 import type { LyricsCandidate, LyricsDoc } from "../types";
 import type { LyricsProvider, TrackQuery } from "./provider";
 import { parseLrc } from "./lrc";
-import { normalizeArtist, normalizeTitle, trackKey } from "./match";
+import { transliterateTelugu } from "./telugu";
+import { artistNames, matchText, normalizeArtist, normalizeTitle, titleSimilarity, trackKey } from "./match";
 
 const BASE = "https://lrclib.net/api";
 
@@ -25,45 +26,101 @@ interface LrclibRecord {
 export class LrclibProvider implements LyricsProvider {
   readonly name = "lrclib";
 
-  async getLyrics(query: TrackQuery): Promise<LyricsDoc> {
+  private pending = new Map<string, Promise<LyricsDoc>>();
+
+  getLyrics(query: TrackQuery): Promise<LyricsDoc> {
     const key = trackKey(query);
-    const durationMs = query.durationMs;
+    const existing = this.pending.get(key);
+    if (existing) return existing;
+    const request = this.lookup(query).finally(() => this.pending.delete(key));
+    this.pending.set(key, request);
+    return request;
+  }
 
-    // `exactGet`/`searchBest` return `null` ONLY for a genuine miss (404 /
-    // empty results) and throw on transient failures (network, 5xx, 429,
-    // timeout). We fire BOTH concurrently so the total wait is the slower call,
-    // not their sum — LRCLIB can be seconds-slow and the old sequential path
-    // stacked those delays. We prefer the exact match; if it hits we return
-    // immediately and the search result is discarded. If neither produces a
-    // record and either threw, we rethrow (route → 502, not negative-cached);
-    // if both genuinely missed, it's a real "no lyrics".
-    const exactP = this.exactGet(query);
-    const searchP = this.searchBest(query);
-    // Avoid an unhandled rejection if we never await searchP (exact hit path).
-    searchP.catch(() => {});
-
-    let record: LrclibRecord | null = null;
+  private async lookup(query: TrackQuery): Promise<LyricsDoc> {
+    const key = trackKey(query);
+    const controller = new AbortController();
+    // Bound the entire waterfall, including body reads and retries.
+    const deadline = setTimeout(() => controller.abort(), 11_000);
+    const records: LrclibRecord[] = [];
     let transient: unknown = null;
-
+    const collect = async (request: Promise<LrclibRecord[]>) => {
+      try { records.push(...await request); } catch (error) { transient = error; }
+    };
     try {
-      record = await exactP;
-    } catch (e) {
-      transient = e;
-    }
-    if (!record) {
-      try {
-        record = await searchP;
-      } catch (e) {
-        transient = e;
+      const search = collect(this.searchRecords({
+        track_name: normalizeTitle(query.title),
+        artist_name: normalizeArtist(query.artist),
+      }, controller.signal));
+      let exact: LrclibRecord | null = null;
+      try { exact = await this.exactGet(query, controller.signal); }
+      catch (error) { transient = error; }
+      if (exact) {
+        const doc = this.recordToDoc(exact, key, query.durationMs);
+        if (doc.synced || doc.instrumental) return doc;
+        records.push(exact);
       }
+      await search;
+      let best = this.bestRecord(records, query);
+      if (!best || !this.recordToDoc(best, key, query.durationMs).synced) {
+        // Film titles, composer-first Spotify credits and singer-only LRCLIB
+        // credits must not prevent a match. Keep every usable plain-text result.
+        const variants: Record<string, string>[] = [
+          { track_name: normalizeTitle(query.title) },
+        ];
+        const romanTitle = transliterateTelugu(normalizeTitle(query.title));
+        if (romanTitle !== normalizeTitle(query.title)) variants.push({ track_name: romanTitle });
+        if (query.album) variants.push({
+          q: `${normalizeTitle(query.title)} ${normalizeTitle(query.album)}`,
+        });
+        const artists = artistNames(query.artist);
+        if (artists.length > 1) variants.push({
+          track_name: normalizeTitle(query.title), artist_name: artists[artists.length - 1],
+        });
+        await Promise.all(variants.map((params) => collect(this.searchRecords(params, controller.signal))));
+        best = this.bestRecord(records, query);
+      }
+      if (best) return this.recordToDoc(best, key, query.durationMs);
+      // Empty/lyrics-less exact records do not suppress broader lookups.
+      if (transient) throw transient;
+      return notFound(key, query.durationMs);
+    } finally {
+      clearTimeout(deadline);
+      controller.abort();
     }
+  }
 
-    if (!record) {
-      if (transient) throw transient; // don't cache; let the poll retry
-      return notFound(key, durationMs); // genuine miss; safe to cache
-    }
+  private bestRecord(records: LrclibRecord[], query: TrackQuery): LrclibRecord | null {
+    const target = query.durationMs / 1000;
+    const artists = artistNames(query.artist).map(matchText);
+    const version = /\b(live|cover|karaoke|instrumental|remix|sped up|slowed)\b/gi;
+    const requestedVersions = new Set((query.title.match(version) ?? []).map((s) => s.toLowerCase()));
+    const ranked = records.flatMap((r) => {
+      if (r.instrumental) return [];
+      const candidateVersions = new Set((r.trackName.match(version) ?? []).map((v) => v.toLowerCase()));
+      if (candidateVersions.size !== requestedVersions.size || [...candidateVersions].some((v) => !requestedVersions.has(v))) return [];
+      const similarity = titleSimilarity(query.title, r.trackName);
+      const delta = r.duration == null ? Infinity : Math.abs(r.duration - target);
+      const artist = artistNames(r.artistName).some((name) => artists.includes(matchText(name)));
+      const album = !!query.album && !!r.albumName && matchText(normalizeTitle(query.album)) === matchText(normalizeTitle(r.albumName));
+      const doc = this.recordToDoc(r, "candidate", query.durationMs);
+      if (doc.notFound || similarity < 0.72) return [];
+      // Reject wrong recordings BEFORE preferring synchronized text.
+      if (Number.isFinite(delta) && delta > Math.min(10, Math.max(4, target * 0.025))) return [];
+      if (!artist && !album && !(similarity >= 0.95 && delta <= 3)) return [];
+      if (!Number.isFinite(delta) && (doc.synced || !artist || similarity < 0.95)) return [];
+      const score = (doc.synced ? 100 : 0) + similarity * 30 + (artist ? 15 : 0) + (album ? 10 : 0) - Math.min(delta, 20);
+      return [{ record: r, score }];
+    }).sort((a, b) => b.score - a.score);
+    return ranked[0]?.record ?? null;
+  }
 
-    return this.recordToDoc(record, key, durationMs);
+  private async searchRecords(params: Record<string, string>, signal: AbortSignal): Promise<LrclibRecord[]> {
+    const res = await this.fetchJson(`${BASE}/search?${new URLSearchParams(params)}`, 4500, signal);
+    if (res.status === 404) return [];
+    const data: unknown = await res.json();
+    if (!Array.isArray(data)) throw new Error("lrclib: invalid search response");
+    return data;
   }
 
   /**
@@ -128,7 +185,7 @@ export class LrclibProvider implements LyricsProvider {
 
     if (record.syncedLyrics && record.syncedLyrics.trim()) {
       const lines = parseLrc(record.syncedLyrics);
-      if (lines.length > 0) {
+      if (lines.some((line) => line.text.trim()) && lines.every((line) => line.tMs <= durationMs + 2000 || durationMs === 0)) {
         return {
           source: this.name,
           providerId: String(record.id),
@@ -143,7 +200,10 @@ export class LrclibProvider implements LyricsProvider {
       }
     }
 
-    if (record.plainLyrics && record.plainLyrics.trim()) {
+    const plain = record.plainLyrics?.trim() || record.syncedLyrics
+      ?.replace(/\[(?:\d{1,3}:\d{2}(?:[.:]\d{1,3})?|(?:ar|ti|al|by|offset):[^\]]*)\]/gi, "")
+      .replace(/<\d{1,3}:\d{2}(?:[.:]\d{1,3})?>/g, "").trim();
+    if (plain) {
       return {
         source: this.name,
         providerId: String(record.id),
@@ -152,7 +212,7 @@ export class LrclibProvider implements LyricsProvider {
         synced: false,
         instrumental: false,
         lines: [],
-        plain: record.plainLyrics,
+        plain,
         notFound: false,
       };
     }
@@ -180,11 +240,14 @@ export class LrclibProvider implements LyricsProvider {
    * "Finding lyrics…" stuck 45s into a song). Bounding each request keeps the
    * worst case to a few seconds, then we fall back to "no lyrics".
    */
-  private async fetchJson(url: string, timeoutMs: number): Promise<Response> {
+  private async fetchJson(url: string, timeoutMs: number, parentSignal?: AbortSignal): Promise<Response> {
     const RETRIES = 1;
     let lastErr: unknown = new Error("lrclib: request failed");
     for (let attempt = 0; attempt <= RETRIES; attempt++) {
+      parentSignal?.throwIfAborted();
       const controller = new AbortController();
+      const abort = () => controller.abort();
+      parentSignal?.addEventListener("abort", abort, { once: true });
       let timedOut = false;
       const timer = setTimeout(() => {
         timedOut = true;
@@ -196,13 +259,17 @@ export class LrclibProvider implements LyricsProvider {
           cache: "no-store",
           signal: controller.signal,
         });
-        if (res.ok || res.status === 404) return res;
+        if (res.ok || res.status === 404) {
+          const body = await res.text();
+          return new Response(body, { status: res.status, headers: res.headers });
+        }
         lastErr = new Error(`lrclib: HTTP ${res.status}`);
       } catch (e) {
         lastErr = e;
         if (timedOut) break; // don't retry a timeout — fail fast
       } finally {
         clearTimeout(timer);
+        parentSignal?.removeEventListener("abort", abort);
       }
       if (attempt < RETRIES) {
         await new Promise((r) => setTimeout(r, 150));
@@ -218,7 +285,7 @@ export class LrclibProvider implements LyricsProvider {
   private static readonly GET_TIMEOUT_MS = 5000;
   private static readonly SEARCH_TIMEOUT_MS = 9000;
 
-  private async exactGet(query: TrackQuery): Promise<LrclibRecord | null> {
+  private async exactGet(query: TrackQuery, signal?: AbortSignal): Promise<LrclibRecord | null> {
     const params = new URLSearchParams({
       track_name: query.title,
       artist_name: query.artist,
@@ -229,46 +296,12 @@ export class LrclibProvider implements LyricsProvider {
     const res = await this.fetchJson(
       `${BASE}/get?${params.toString()}`,
       LrclibProvider.GET_TIMEOUT_MS,
+      signal,
     );
     if (res.status === 404) return null; // genuine miss
     return (await res.json()) as LrclibRecord;
   }
 
-  private async searchBest(query: TrackQuery): Promise<LrclibRecord | null> {
-    const params = new URLSearchParams({
-      track_name: normalizeTitle(query.title),
-      artist_name: normalizeArtist(query.artist),
-    });
-
-    {
-      const res = await this.fetchJson(
-        `${BASE}/search?${params.toString()}`,
-        LrclibProvider.SEARCH_TIMEOUT_MS,
-      );
-      if (res.status === 404) return null;
-      const results = (await res.json()) as LrclibRecord[];
-      if (!Array.isArray(results) || results.length === 0) return null;
-
-      const targetSec = query.durationMs / 1000;
-      // Rank: prefer synced lyrics, then closest duration.
-      const scored = results
-        .map((r) => {
-          const durDelta =
-            r.duration != null ? Math.abs(r.duration - targetSec) : 9999;
-          const hasSynced = !!(r.syncedLyrics && r.syncedLyrics.trim());
-          return { r, durDelta, hasSynced };
-        })
-        .sort((a, b) => {
-          if (a.hasSynced !== b.hasSynced) return a.hasSynced ? -1 : 1;
-          return a.durDelta - b.durDelta;
-        });
-
-      const best = scored[0];
-      // Guard against wildly wrong duration matches (> 15s off and not synced).
-      if (best.durDelta > 15 && !best.hasSynced) return null;
-      return best.r;
-    }
-  }
 }
 
 function notFound(key: string, durationMs: number): LyricsDoc {

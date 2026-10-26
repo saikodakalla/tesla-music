@@ -22,6 +22,7 @@ export function getPrefetchedLyrics(trackId: string): LyricsDoc | null {
 }
 
 export function setPrefetchedLyrics(trackId: string, doc: LyricsDoc) {
+  if (doc.notFound || (!doc.synced && !doc.instrumental)) return;
   if (prefetched.size >= MAX_ENTRIES) {
     const oldest = prefetched.keys().next().value;
     if (oldest !== undefined) prefetched.delete(oldest);

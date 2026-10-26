@@ -6,6 +6,7 @@ import { getCached, setCached } from "@/lib/lyrics/cache";
 import { trackKey } from "@/lib/lyrics/match";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 30;
 
 const QuerySchema = z.object({
   title: z.string().min(1).max(400),
@@ -13,6 +14,7 @@ const QuerySchema = z.object({
   album: z.string().max(400).optional(),
   durationMs: z.coerce.number().int().positive().max(60 * 60 * 1000),
   isrc: z.string().max(40).optional(),
+  refresh: z.enum(["1"]).optional(),
 });
 
 /**
@@ -41,10 +43,10 @@ export async function GET(req: NextRequest) {
     isrc: q.isrc ?? null,
   });
 
-  const cached = getCached(key);
+  const cached = q.refresh ? null : getCached(key);
   if (cached) {
     return NextResponse.json(cached, {
-      headers: { "Cache-Control": "private, max-age=86400" },
+      headers: { "Cache-Control": "private, no-store" },
     });
   }
 
@@ -58,7 +60,7 @@ export async function GET(req: NextRequest) {
     });
     setCached(key, doc);
     return NextResponse.json(doc, {
-      headers: { "Cache-Control": "private, max-age=86400" },
+      headers: { "Cache-Control": "private, no-store" },
     });
   } catch {
     return NextResponse.json({ error: "lyrics_unavailable" }, { status: 502 });

@@ -14,6 +14,7 @@ const TIME_TAG = /\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?\]/g;
 
 export function parseLrc(lrc: string): LyricLine[] {
   const lines: LyricLine[] = [];
+  const offset = Number(lrc.match(/\[offset:\s*([+-]?\d+)\]/i)?.[1] ?? 0);
 
   for (const rawLine of lrc.split(/\r?\n/)) {
     TIME_TAG.lastIndex = 0;
@@ -24,15 +25,16 @@ export function parseLrc(lrc: string): LyricLine[] {
     while ((match = TIME_TAG.exec(rawLine)) !== null) {
       const min = parseInt(match[1], 10);
       const sec = parseInt(match[2], 10);
+      if (sec >= 60) continue;
       const fracRaw = match[3] ?? "0";
       // Normalise fractional seconds to ms (".34" → 340ms, ".340" → 340ms).
       const frac = parseInt(fracRaw.padEnd(3, "0").slice(0, 3), 10);
-      stamps.push(min * 60_000 + sec * 1_000 + frac);
+      stamps.push(Math.max(0, min * 60_000 + sec * 1_000 + frac - offset));
       lastTagEnd = TIME_TAG.lastIndex;
     }
 
     if (stamps.length === 0) continue; // metadata or untimed line
-    const text = rawLine.slice(lastTagEnd).trim();
+    const text = rawLine.slice(lastTagEnd).replace(/<\d{1,3}:\d{2}(?:[.:]\d{1,3})?>/g, "").trim();
     for (const tMs of stamps) {
       lines.push({ tMs, text });
     }

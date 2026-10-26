@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { usePlayback } from "@/hooks/usePlayback";
 import { useLyrics } from "@/hooks/useLyrics";
@@ -20,6 +20,8 @@ import LyricsControls from "./LyricsControls";
 import SyncCalibrator from "./SyncCalibrator";
 import LyricsView from "./LyricsView";
 import PlainLyrics from "./PlainLyrics";
+import CustomLyricsEditor from "./CustomLyricsEditor";
+import { useCustomLyrics } from "@/hooks/useCustomLyrics";
 import StatusCard from "./StatusCard";
 import TopBar from "./TopBar";
 import type { LyricsDoc, PlaybackState } from "@/lib/types";
@@ -55,12 +57,16 @@ export default function Player({
   const { overrideId, setOverride, clearOverride } = useLyricOverride(
     playback?.trackId,
   );
-  const { lyrics, loading } = useLyrics(playback, initialLyrics, overrideId);
+  const { lyrics: fetchedLyrics, loading, error: lyricsError, retry: retryLyrics } = useLyrics(playback, initialLyrics, overrideId);
+  const custom = useCustomLyrics(playback?.trackId, playback?.durationMs);
+  const lyrics = custom.doc ?? fetchedLyrics;
+  const transformLines = useMemo(() => lyrics?.synced ? lyrics.lines
+    : lyrics?.plain?.split(/\r?\n/).map((text) => ({ tMs: 0, text })), [lyrics]);
   const language = useLyricTransform({
-    trackKey: lyrics?.synced ? lyrics.trackKey : null,
+    trackKey: lyrics?.trackKey,
     title: playback?.title,
     artist: playback?.artists,
-    lines: lyrics?.synced ? lyrics.lines : null,
+    lines: transformLines,
   });
 
   // Album-art-derived accent + palette for the ambient theme, and the look
@@ -72,6 +78,7 @@ export default function Player({
   const [dimmed, setDimmed] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [calibrating, setCalibrating] = useState(false);
+  const [editingLyrics, setEditingLyrics] = useState(false);
   const [explainIndex, setExplainIndex] = useState<number | null>(null);
   const explanation = useLyricExplanation();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -93,6 +100,8 @@ export default function Player({
   // Dismiss any open explanation when the song changes.
   useEffect(() => {
     setExplainIndex(null);
+    setEditingLyrics(false);
+    setCalibrating(false);
     explanation.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playback?.trackId]);
@@ -202,6 +211,7 @@ export default function Player({
           anchor={anchor}
           lyrics={lyrics}
           loading={loading}
+          lyricsError={lyricsError}
           syncOffsetMs={syncOffsetMs}
           accentLyrics={theme.accentLyrics}
           transformedLines={language.transformedLines}
@@ -226,6 +236,10 @@ export default function Player({
         activeLyricsId={lyrics?.providerId ?? null}
         setOverride={setOverride}
         clearOverride={clearOverride}
+        onRetryLyrics={retryLyrics}
+        onEditLyrics={() => { setSettingsOpen(false); setEditingLyrics(true); }}
+        hasCustomLyrics={!!custom.doc}
+        onClearCustomLyrics={custom.clear}
         language={language}
         backdrop={theme.backdrop}
         setBackdrop={theme.setBackdrop}
@@ -241,6 +255,27 @@ export default function Player({
           setCalibrating(true);
         }}
       />
+
+      {playback?.isActive && playback.type === "track" && !lyrics?.synced && !lyrics?.instrumental && !settingsOpen && !editingLyrics && (
+        <div className="absolute inset-x-0 bottom-6 z-20 flex flex-wrap justify-center gap-3">
+          <button onClick={retryLyrics} disabled={loading} className="min-h-16 rounded-full bg-ink-800 px-6 font-semibold disabled:opacity-40">{loading ? "Finding lyrics…" : "Retry lyrics"}</button>
+          <button onClick={() => setEditingLyrics(true)} className="min-h-16 rounded-full bg-white px-6 font-semibold text-black">Add or time lyrics</button>
+        </div>
+      )}
+
+      {editingLyrics && playback?.trackId && (
+        <CustomLyricsEditor
+          key={playback.trackId}
+          initialText={custom.text || lyrics?.plain || ""}
+          trackId={playback.trackId}
+          title={playback.title ?? "Current song"}
+          durationMs={playback.durationMs}
+          anchor={anchor}
+          onSave={custom.save}
+          storageError={custom.storageError}
+          onClose={() => setEditingLyrics(false)}
+        />
+      )}
 
       {calibrating && lyrics?.lines && (
         <SyncCalibrator
@@ -286,6 +321,7 @@ function CenterContent({
   anchor,
   lyrics,
   loading,
+  lyricsError,
   syncOffsetMs,
   accentLyrics,
   transformedLines,
@@ -299,6 +335,7 @@ function CenterContent({
   anchor: ReturnType<typeof usePlayback>["anchor"];
   lyrics: ReturnType<typeof useLyrics>["lyrics"];
   loading: boolean;
+  lyricsError: boolean;
   syncOffsetMs: number;
   accentLyrics: boolean;
   transformedLines: string[] | null;
@@ -373,13 +410,18 @@ function CenterContent({
   }
 
   if (lyrics && !lyrics.synced && lyrics.plain) {
-    return <PlainLyrics text={lyrics.plain} />;
+    return <PlainLyrics text={lyrics.plain} transformedLines={transformedLines} displayMode={lyricDisplayMode} />;
+  }
+
+  if (lyricsError && !lyrics) {
+    return <StatusCard title="Lyrics are temporarily unavailable" subtitle="Retry the lookup or add lyrics for this recording." albumArtUrl={playback.albumArtUrl} trackTitle={playback.title} trackArtist={playback.artists} />;
   }
 
   if (lyrics?.notFound) {
     return (
       <StatusCard
-        title="No synced lyrics for this song"
+        title="No lyrics found for this recording"
+        subtitle="Try searching by the song name, or add your own lyrics and timing."
         albumArtUrl={playback.albumArtUrl}
         trackTitle={playback.title}
         trackArtist={playback.artists}

@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
   const cached = getCached(key);
   if (cached) {
     return NextResponse.json(cached, {
-      headers: { "Cache-Control": "private, max-age=86400" },
+      headers: { "Cache-Control": "private, no-store" },
     });
   }
 
@@ -46,7 +46,7 @@ export async function GET(req: NextRequest) {
     const doc = await provider.getById(id);
     setCached(key, doc);
     return NextResponse.json(doc, {
-      headers: { "Cache-Control": "private, max-age=86400" },
+      headers: { "Cache-Control": "private, no-store" },
     });
   } catch {
     return NextResponse.json({ error: "lyrics_unavailable" }, { status: 502 });

@@ -28,11 +28,40 @@ export interface LyricsProvider {
 }
 
 import { LrclibProvider } from "./lrclib";
+import { lookupPlainLyrics } from "./ovh";
+import { trackKey } from "./match";
+
+class CombinedProvider extends LrclibProvider {
+  private lookups = new Map<string, Promise<LyricsDoc>>();
+
+  override getLyrics(query: TrackQuery): Promise<LyricsDoc> {
+    const key = trackKey(query);
+    const pending = this.lookups.get(key);
+    if (pending) return pending;
+    const request = this.lookupSources(query).finally(() => this.lookups.delete(key));
+    this.lookups.set(key, request);
+    return request;
+  }
+
+  private async lookupSources(query: TrackQuery): Promise<LyricsDoc> {
+    let primary: LyricsDoc | null = null;
+    let failure: unknown = null;
+    try { primary = await super.getLyrics(query); }
+    catch (error) { failure = error; }
+    if (primary && !primary.notFound) return primary;
+    try {
+      const fallback = await lookupPlainLyrics(query);
+      if (fallback) return fallback;
+    } catch (error) { failure = error; }
+    if (failure) throw failure;
+    return primary!;
+  }
+}
 
 let provider: LyricsProvider | null = null;
 
 /** The active provider. Default: LRCLIB (free, no key). */
 export function getLyricsProvider(): LyricsProvider {
-  if (!provider) provider = new LrclibProvider();
+  if (!provider) provider = new CombinedProvider();
   return provider;
 }

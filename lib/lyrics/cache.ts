@@ -15,7 +15,8 @@ interface Entry {
 }
 
 const POSITIVE_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
-const NEGATIVE_TTL_MS = 1000 * 60 * 60; // 1 hour
+const NEGATIVE_TTL_MS = 30_000;
+const PLAIN_TTL_MS = 5 * 60_000; // Recheck plain text for newly available timings.
 const MAX_ENTRIES = 500;
 
 const store = new Map<string, Entry>();
@@ -34,7 +35,7 @@ export function getCached(key: string): LyricsDoc | null {
 }
 
 export function setCached(key: string, doc: LyricsDoc): void {
-  const ttl = doc.notFound ? NEGATIVE_TTL_MS : POSITIVE_TTL_MS;
+  const ttl = doc.notFound ? NEGATIVE_TTL_MS : doc.synced || doc.instrumental ? POSITIVE_TTL_MS : PLAIN_TTL_MS;
   if (store.size >= MAX_ENTRIES) {
     const oldest = store.keys().next().value;
     if (oldest !== undefined) store.delete(oldest);
