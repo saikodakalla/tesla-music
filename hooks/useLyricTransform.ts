@@ -12,6 +12,7 @@ const DISPLAY_KEY = "tl_transform_display";
 
 export const LANGUAGE_OPTIONS = [
   "English",
+  "Telugu",
   "French",
   "Spanish",
   "German",
