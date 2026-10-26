@@ -76,7 +76,7 @@ export function useLyricTransform({
     controllerRef.current?.abort();
     setTransformedLines(null);
     setStatus("idle");
-  }, [trackKey, kind, targetLanguage]);
+  }, [trackKey, kind, targetLanguage, lines]);
 
   useEffect(() => () => controllerRef.current?.abort(), []);
 
@@ -124,6 +124,7 @@ export function useLyricTransform({
     })
       .then((res) => (res.ok ? res.json() : Promise.reject(res.status)))
       .then((data: { lines: string[] }) => {
+        if (controller.signal.aborted) return;
         setTransformedLines(data.lines);
         setStatus("success");
       })
