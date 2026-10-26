@@ -1,5 +1,14 @@
 import type { Metadata, Viewport } from "next";
+import { Noto_Sans_Telugu } from "next/font/google";
 import "./globals.css";
+
+// Ship Telugu glyphs with the app: the Tesla system font may not include them.
+const telugu = Noto_Sans_Telugu({
+  subsets: ["telugu"],
+  variable: "--font-telugu",
+  display: "swap",
+  preload: false,
+});
 
 export const metadata: Metadata = {
   title: "Tesla Lyrics",
@@ -21,7 +30,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" className={telugu.variable}>
       <body className="font-sans antialiased">{children}</body>
     </html>
   );

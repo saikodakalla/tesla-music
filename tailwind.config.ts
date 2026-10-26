@@ -17,6 +17,7 @@ const config: Config = {
           "Roboto",
           "Helvetica Neue",
           "Arial",
+          "var(--font-telugu)",
           "sans-serif",
         ],
       },

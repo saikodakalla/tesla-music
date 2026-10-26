@@ -93,7 +93,7 @@ export async function transformLyricLines(
   const timer = setTimeout(() => controller.abort(), TRANSFORM_TIMEOUT_MS);
   const instruction =
     params.kind === "translation"
-      ? `Translate every line into ${params.targetLanguage}.`
+      ? `Translate every line into ${params.targetLanguage}. Use the language's native script (for Telugu, use తెలుగు characters), not Latin transliteration.`
       : "Romanize every line into readable Latin characters. Do not translate its meaning.";
 
   try {
